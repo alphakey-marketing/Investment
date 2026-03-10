@@ -1,22 +1,25 @@
 import React from 'react';
 import { AppMode } from '../types/mode';
+import { Lang, tr } from '../i18n';
 
 interface Props {
   mode: AppMode;
   onChange: (m: AppMode) => void;
+  lang: Lang;
+  onLangChange: (l: Lang) => void;
 }
 
-const MODES: { value: AppMode; label: string; desc: string; color: string }[] = [
-  { value: 'LIVE', label: '🟡 實盤', desc: '即時市場訊號', color: '#f0b90b' },
-  { value: 'PAPER', label: '🧸 模擬盤', desc: '號碼買賣練習', color: '#29b6f6' },
-  { value: 'BACKTEST', label: '🔍 回湋', desc: '歷史訊號湋試', color: '#ab47bc' },
-];
+export default function ModeBar({ mode, onChange, lang, onLangChange }: Props) {
+  const modes: { value: AppMode; labelKey: 'modeLive'|'modePaper'|'modeBacktest'; descKey: 'modeDescLive'|'modeDescPaper'|'modeDescBack'; color: string }[] = [
+    { value: 'LIVE',     labelKey: 'modeLive',     descKey: 'modeDescLive',  color: '#f0b90b' },
+    { value: 'PAPER',    labelKey: 'modePaper',    descKey: 'modeDescPaper', color: '#29b6f6' },
+    { value: 'BACKTEST', labelKey: 'modeBacktest', descKey: 'modeDescBack',  color: '#ab47bc' },
+  ];
 
-export default function ModeBar({ mode, onChange }: Props) {
   return (
     <div style={styles.bar}>
-      <span style={styles.title}>模式</span>
-      {MODES.map((m) => (
+      <span style={styles.title}>{tr('modeLabel', lang)}</span>
+      {modes.map((m) => (
         <button
           key={m.value}
           onClick={() => onChange(m.value)}
@@ -25,12 +28,20 @@ export default function ModeBar({ mode, onChange }: Props) {
             ...(mode === m.value ? { ...styles.active, borderColor: m.color, color: m.color, background: m.color + '18' } : {}),
           }}
         >
-          {m.label}
+          {tr(m.labelKey, lang)}
           <span style={{ fontSize: '0.65rem', color: mode === m.value ? m.color : '#444', display: 'block', marginTop: 1 }}>
-            {m.desc}
+            {tr(m.descKey, lang)}
           </span>
         </button>
       ))}
+      {/* Language toggle */}
+      <button
+        onClick={() => onLangChange(lang === 'ZH' ? 'EN' : 'ZH')}
+        style={styles.langBtn}
+        title="Switch Language / 切換語言"
+      >
+        {lang === 'ZH' ? '🌐 EN' : '🌐 中'}
+      </button>
     </div>
   );
 }
@@ -49,4 +60,9 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1, minWidth: 90,
   },
   active: { fontWeight: 'bold' },
+  langBtn: {
+    background: '#0f0f1a', border: '1px solid #2a2a3e', color: '#888',
+    padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
+    fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'nowrap', marginLeft: 'auto',
+  },
 };
