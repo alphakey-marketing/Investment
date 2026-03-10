@@ -1,8 +1,18 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Candle, Interval } from '../types/binance';
 
-const BASE_URL = 'https://fapi.binance.com';
+// Use REST API polling instead of WebSocket for Replit compatibility
+// Binance Futures REST is CORS-friendly; WSS is often blocked in sandboxed envs
 const SYMBOL = 'XAUUSDT';
+const POLL_INTERVAL_MS = 10000; // refresh every 10 seconds
+
+// Try Futures API first, fallback to Spot API (XAUUSDT available on both)
+const ENDPOINTS = [
+  (interval: string, limit: number) =>
+    `https://fapi.binance.com/fapi/v1/klines?symbol=${SYMBOL}&interval=${interval}&limit=${limit}`,
+  (interval: string, limit: number) =>
+    `https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${interval}&limit=${limit}`,
+];
 
 function parseRawKline(raw: (string | number)[]): Candle {
   return {
@@ -20,58 +30,50 @@ export function useBinanceKlines(interval: Interval = '1h', limit = 100) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastPrice, setLastPrice] = useState<number | null>(null);
+  const [connectionMode, setConnectionMode] = useState<'polling' | 'ws'>('polling');
+  const endpointIndexRef = useRef(0);
 
   const fetchKlines = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await fetch(
-        `${BASE_URL}/fapi/v1/klines?symbol=${SYMBOL}&interval=${interval}&limit=${limit}`
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      const data: (string | number)[][] = await res.json();
-      const parsed = data.map(parseRawKline);
-      setCandles(parsed);
-      setLastPrice(parsed[parsed.length - 1]?.close ?? null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch klines');
-    } finally {
-      setLoading(false);
+    let lastErr: Error | null = null;
+
+    // Try each endpoint in order
+    for (let i = 0; i < ENDPOINTS.length; i++) {
+      const idx = (endpointIndexRef.current + i) % ENDPOINTS.length;
+      try {
+        const url = ENDPOINTS[idx](interval, limit);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: (string | number)[][] = await res.json();
+        const parsed = data.map(parseRawKline);
+        setCandles(parsed);
+        setLastPrice(parsed[parsed.length - 1]?.close ?? null);
+        setError(null);
+        setLoading(false);
+        endpointIndexRef.current = idx; // remember working endpoint
+        return;
+      } catch (err) {
+        lastErr = err instanceof Error ? err : new Error('Fetch failed');
+      }
     }
+
+    // All endpoints failed
+    setError(`無法連接Binance API: ${lastErr?.message ?? 'Unknown error'}`);
+    setLoading(false);
   }, [interval, limit]);
 
+  // Initial fetch + polling every 10s
   useEffect(() => {
+    setLoading(true);
     fetchKlines();
-    const wsUrl = `wss://fstream.binance.com/ws/${SYMBOL.toLowerCase()}@kline_${interval}`;
-    const ws = new WebSocket(wsUrl);
 
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      const k = msg.k;
-      if (!k) return;
-      const updatedCandle: Candle = {
-        time: Math.floor(k.t / 1000),
-        open: parseFloat(k.o),
-        high: parseFloat(k.h),
-        low: parseFloat(k.l),
-        close: parseFloat(k.c),
-        volume: parseFloat(k.v),
-      };
-      setLastPrice(updatedCandle.close);
-      setCandles((prev) => {
-        if (prev.length === 0) return [updatedCandle];
-        const last = prev[prev.length - 1];
-        if (last.time === updatedCandle.time) {
-          return [...prev.slice(0, -1), updatedCandle];
-        } else {
-          return [...prev.slice(-(limit - 1)), updatedCandle];
-        }
-      });
-    };
+    const timer = setInterval(() => {
+      fetchKlines();
+    }, POLL_INTERVAL_MS);
 
-    ws.onerror = () => setError('WebSocket error - retrying...');
-    return () => ws.close();
-  }, [interval, limit, fetchKlines]);
+    setConnectionMode('polling');
 
-  return { candles, loading, error, lastPrice, refetch: fetchKlines };
+    return () => clearInterval(timer);
+  }, [fetchKlines]);
+
+  return { candles, loading, error, lastPrice, connectionMode, refetch: fetchKlines };
 }
