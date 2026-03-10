@@ -6,5 +6,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
+    allowedHosts: 'all', // Allow all Replit dynamic hosts
   }
 })
