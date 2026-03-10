@@ -159,7 +159,7 @@ export default function App() {
       {mode === 'LIVE' && !loading && !error && (
         <>
           <ErrorBoundary fallback="Signal panel failed">
-            <SignalPanel signal={signal} ma20={ma20} ma60={ma60} lastPrice={lastPrice} lang={lang} />
+            <SignalPanel signal={signal} ma20={ma20} ma60={ma60} lastPrice={lastPrice} lang={lang} candles={candles} />
           </ErrorBoundary>
           <ErrorBoundary fallback="Calculator failed">
             <PositionCalculator signal={signal} lastPrice={lastPrice} onAddTrade={addTrade} symbol={symbol} lang={lang} />
