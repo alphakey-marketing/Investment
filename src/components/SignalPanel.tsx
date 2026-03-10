@@ -40,6 +40,241 @@ function StatCard({ label, value, color, tip, sub }: { label: string; value: str
   );
 }
 
+// ─── Live Wait Checklist ───────────────────────────────────────────────────────
+function WaitCard({
+  lastPrice, latestMA20, latestMA60, isEN,
+}: {
+  lastPrice: number | null;
+  latestMA20: number | null;
+  latestMA60: number | null;
+  isEN: boolean;
+}) {
+  if (!lastPrice || !latestMA20 || !latestMA60) {
+    return (
+      <div style={wS.card}>
+        <div style={wS.icon}>⏳</div>
+        <div style={wS.title}>{isEN ? 'Loading data...' : '載入數據中...'}</div>
+      </div>
+    );
+  }
+
+  const PROX = 0.005; // 0.5%
+
+  // ── LONG check ──
+  const longZoneLow  = latestMA20 * (1 - PROX);   // e.g. MA20 × 0.995
+  const longZoneHigh = latestMA20 * (1 + PROX);   // e.g. MA20 × 1.005
+  const nearMA20     = Math.abs(lastPrice - latestMA20) / latestMA20 < PROX;
+  const aboveMA20    = lastPrice > latestMA20;
+  // proximity 0→1 (1 = right on MA20)
+  const longProx     = Math.max(0, 1 - Math.abs(lastPrice - latestMA20) / latestMA20 / PROX);
+
+  // ── SHORT check ──
+  const shortZoneLow  = latestMA60 * (1 - PROX);
+  const shortZoneHigh = latestMA60 * (1 + PROX);
+  const nearMA60      = Math.abs(lastPrice - latestMA60) / latestMA60 < PROX;
+  const belowMA60     = lastPrice < latestMA60;
+  const shortProx     = Math.max(0, 1 - Math.abs(lastPrice - latestMA60) / latestMA60 / PROX);
+
+  // Distance in dollars
+  const distMA20 = Math.abs(lastPrice - latestMA20);
+  const distMA60 = Math.abs(lastPrice - latestMA60);
+
+  // Which scenario is closer?
+  const longReady  = aboveMA20 && nearMA20;
+  const shortReady = belowMA60 && nearMA60;
+
+  return (
+    <div style={wS.card}>
+      {/* Header */}
+      <div style={wS.header}>
+        <span style={{ fontSize: '1.5rem' }}>⏳</span>
+        <div>
+          <div style={wS.title}>{isEN ? 'Waiting for a signal…' : '等待訊號中…'}</div>
+          <div style={wS.subtitle}>
+            {isEN
+              ? 'Below are the exact conditions needed. Both ✅ must be green at the same time.'
+              : '以下是觸發訊號所需的精確條件。兩個 ✅ 必須同時滿足才會觸發。'}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Analogy ── */}
+      <div style={wS.analogy}>
+        <span style={{ fontSize: '1.1rem' }}>🚉</span>
+        <span style={{ fontSize: '0.8rem', color: '#888', lineHeight: 1.6 }}>
+          {isEN
+            ? 'Think of MA20 as a train platform. The signal fires only when the price "arrives at the platform" (within 0.5%) AND a new passenger boards (price makes a new high). Right now the train is still en route.'
+            : '把 MA20 想像成火車月台。訊號只在價格「抵達月台」（0.5%範圍內）且 同時 有新乘客上車（創新高）時才觸發。現在火車仍在途中。'}
+        </span>
+      </div>
+
+      <div style={wS.divider} />
+
+      {/* ── LONG checklist ── */}
+      <ConditionBlock
+        title={isEN ? '🟢 BUY (Long) Signal — needs ALL 3:' : '🟢 買入（做多）訊號 — 需同時滿足全部3項：'}
+        color="#00c853"
+      >
+        <CondRow
+          ok={aboveMA20}
+          label={isEN ? 'Price is ABOVE MA20' : '現價在 MA20 上方'}
+          detail={
+            aboveMA20
+              ? (isEN ? `✅ Yes — $${lastPrice.toFixed(2)} > MA20 $${latestMA20.toFixed(2)}` : `✅ 是 — $${lastPrice.toFixed(2)} > MA20 $${latestMA20.toFixed(2)}`)
+              : (isEN ? `❌ No — price $${lastPrice.toFixed(2)} is still BELOW MA20 $${latestMA20.toFixed(2)}` : `❌ 否 — 現價 $${lastPrice.toFixed(2)} 仍低於 MA20 $${latestMA20.toFixed(2)}`)
+          }
+          tip={isEN ? 'The rule: only buy when price is floating above the MA line.' : '規則：只在價格浮於 MA 線上方時才考慮買入。'}
+          color="#00c853"
+        />
+        <CondRow
+          ok={nearMA20}
+          label={isEN ? 'Price is close to MA20 (within 0.5%)' : '現價接近 MA20（0.5%範圍內）'}
+          detail={
+            nearMA20
+              ? (isEN ? `✅ Yes — only $${distMA20.toFixed(2)} away (${((distMA20 / latestMA20) * 100).toFixed(2)}%)` : `✅ 是 — 距離只有 $${distMA20.toFixed(2)}（${((distMA20 / latestMA20) * 100).toFixed(2)}%）`)
+              : (isEN ? `❌ Still $${distMA20.toFixed(2)} away — need to be within $${(latestMA20 * PROX).toFixed(2)} of MA20` : `❌ 還差 $${distMA20.toFixed(2)} — 需進入 MA20±$${(latestMA20 * PROX).toFixed(2)} 的範圍內`)
+          }
+          tip={isEN
+            ? `The "arrive at the platform" rule. MA20 zone: $${longZoneLow.toFixed(2)} → $${longZoneHigh.toFixed(2)}`
+            : `「到位才動」規則。MA20 觸發區間：$${longZoneLow.toFixed(2)} → $${longZoneHigh.toFixed(2)}`}
+          color="#00c853"
+          progress={longProx}
+          progressLabel={isEN
+            ? `Zone: $${longZoneLow.toFixed(2)} ← MA20 → $${longZoneHigh.toFixed(2)}`
+            : `觸發區：$${longZoneLow.toFixed(2)} ← MA20 $${latestMA20.toFixed(2)} → $${longZoneHigh.toFixed(2)}`}
+        />
+        <CondRow
+          ok={false}
+          pending
+          label={isEN ? 'Current candle makes a NEW HIGH vs previous candle' : '本根K線創出比上一根更高的新高'}
+          detail={isEN
+            ? 'Checked live on each new candle close. Like a new peak being formed — momentum confirmation.'
+            : '每根K線收盤時即時檢查。就像形成一個新高峰——動能確認信號。'}
+          tip={isEN ? 'Prevents false signals on sideways price.' : '防止橫盤時產生假訊號。'}
+          color="#00c853"
+        />
+      </ConditionBlock>
+
+      <div style={wS.divider} />
+
+      {/* ── SHORT checklist ── */}
+      <ConditionBlock
+        title={isEN ? '🔴 SELL (Short) Signal — needs ALL 3:' : '🔴 賣出（做空）訊號 — 需同時滿足全部3項：'}
+        color="#ff1744"
+      >
+        <CondRow
+          ok={belowMA60}
+          label={isEN ? 'Price is BELOW MA60' : '現價在 MA60 下方'}
+          detail={
+            belowMA60
+              ? (isEN ? `✅ Yes — $${lastPrice.toFixed(2)} < MA60 $${latestMA60.toFixed(2)}` : `✅ 是 — $${lastPrice.toFixed(2)} < MA60 $${latestMA60.toFixed(2)}`)
+              : (isEN ? `❌ No — price $${lastPrice.toFixed(2)} is still ABOVE MA60 $${latestMA60.toFixed(2)}` : `❌ 否 — 現價 $${lastPrice.toFixed(2)} 仍高於 MA60 $${latestMA60.toFixed(2)}`)
+          }
+          tip={isEN ? 'The rule: only sell/short when price is below the MA60 line.' : '規則：只在價格沉於 MA60 線下方時才考慮賣出。'}
+          color="#ff1744"
+        />
+        <CondRow
+          ok={nearMA60}
+          label={isEN ? 'Price is close to MA60 (within 0.5%)' : '現價接近 MA60（0.5%範圍內）'}
+          detail={
+            nearMA60
+              ? (isEN ? `✅ Yes — only $${distMA60.toFixed(2)} away (${((distMA60 / latestMA60) * 100).toFixed(2)}%)` : `✅ 是 — 距離只有 $${distMA60.toFixed(2)}（${((distMA60 / latestMA60) * 100).toFixed(2)}%）`)
+              : (isEN ? `❌ Still $${distMA60.toFixed(2)} away — need within $${(latestMA60 * PROX).toFixed(2)} of MA60` : `❌ 還差 $${distMA60.toFixed(2)} — 需進入 MA60±$${(latestMA60 * PROX).toFixed(2)} 的範圍內`)
+          }
+          tip={isEN
+            ? `MA60 trigger zone: $${shortZoneLow.toFixed(2)} → $${shortZoneHigh.toFixed(2)}`
+            : `MA60 觸發區間：$${shortZoneLow.toFixed(2)} → $${shortZoneHigh.toFixed(2)}`}
+          color="#ff1744"
+          progress={shortProx}
+          progressLabel={isEN
+            ? `Zone: $${shortZoneLow.toFixed(2)} ← MA60 → $${shortZoneHigh.toFixed(2)}`
+            : `觸發區：$${shortZoneLow.toFixed(2)} ← MA60 $${latestMA60.toFixed(2)} → $${shortZoneHigh.toFixed(2)}`}
+        />
+        <CondRow
+          ok={false}
+          pending
+          label={isEN ? 'Current candle makes a NEW LOW vs previous candle' : '本根K線創出比上一根更低的新低'}
+          detail={isEN
+            ? 'Checked live on each new candle close. Confirms the downward momentum.'
+            : '每根K線收盤時即時檢查。確認下行動能。'}
+          tip={isEN ? 'Prevents false signals on sideways price.' : '防止橫盤時產生假訊號。'}
+          color="#ff1744"
+        />
+      </ConditionBlock>
+
+      {/* ── Summary hint ── */}
+      <div style={wS.hint}>
+        {isEN
+          ? `💡 Currently ${longProx > shortProx ? 'closer to a BUY signal' : 'closer to a SELL signal'} — price is ${distMA20 < distMA60 ? `$${distMA20.toFixed(2)} from MA20` : `$${distMA60.toFixed(2)} from MA60`}.`
+          : `💡 目前${longProx > shortProx ? '較接近買入訊號' : '較接近賣出訊號'} — 現價距 ${distMA20 < distMA60 ? `MA20 還差 $${distMA20.toFixed(2)}` : `MA60 還差 $${distMA60.toFixed(2)}`}。`}
+      </div>
+    </div>
+  );
+}
+
+function ConditionBlock({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: '0.78rem', fontWeight: 'bold', color, marginBottom: 2 }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function CondRow({
+  ok, pending, label, detail, tip, color, progress, progressLabel,
+}: {
+  ok: boolean; pending?: boolean; label: string; detail: string; tip?: string; color: string;
+  progress?: number; progressLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const icon = pending ? '⏱' : ok ? '✅' : '❌';
+  const rowBg = ok ? color + '12' : '#0f0f1a';
+  const borderCol = ok ? color + '55' : '#2a2a3e';
+
+  return (
+    <div style={{ background: rowBg, border: `1px solid ${borderCol}`, borderRadius: 8, overflow: 'hidden' }}>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{ width: '100%', background: 'none', border: 'none', padding: '9px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left' }}
+      >
+        <span style={{ fontSize: '1rem', flexShrink: 0 }}>{icon}</span>
+        <span style={{ fontSize: '0.8rem', color: ok ? color : '#888', flex: 1, fontFamily: 'monospace' }}>{label}</span>
+        {tip && (
+          <span onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0 }}>
+            <Tip text={tip}><span style={{ fontSize: '0.68rem', color: '#444' }}>ⓘ</span></Tip>
+          </span>
+        )}
+        <span style={{ color: '#444', fontSize: '0.7rem', flexShrink: 0 }}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: '0 12px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: '0.78rem', color: '#aaa', lineHeight: 1.6 }}>{detail}</div>
+          {progress !== undefined && (
+            <div>
+              <div style={{ fontSize: '0.68rem', color: '#555', marginBottom: 4 }}>{progressLabel}</div>
+              <div style={{ background: '#1a1a2e', borderRadius: 4, height: 8, overflow: 'hidden', position: 'relative' }}>
+                <div style={{
+                  width: `${Math.min(progress * 100, 100)}%`,
+                  height: '100%',
+                  background: progress >= 1 ? color : `linear-gradient(90deg, ${color}44, ${color})`,
+                  borderRadius: 4,
+                  transition: 'width 0.5s ease',
+                }} />
+              </div>
+              <div style={{ fontSize: '0.68rem', color: progress >= 1 ? color : '#555', marginTop: 3, textAlign: 'right' }}>
+                {progress >= 1 ? '✅ In zone!' : `${(progress * 100).toFixed(0)}% of the way there`}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Beginner Guide ────────────────────────────────────────────────────────────
 function BeginnerGuide({ lang }: { lang: Lang }) {
   const [open, setOpen] = useState(false);
   const isEN = lang === 'EN';
@@ -52,87 +287,56 @@ function BeginnerGuide({ lang }: { lang: Lang }) {
       </button>
       {open && (
         <div style={guide.body}>
-
-          {/* What is this app */}
           <Section color="#f0b90b" title={isEN ? '🗺️ What is this app?' : '🗺️ 這個 App 是什麼？'}>
             <p style={guide.p}>
               {isEN
-                ? 'Think of this as a traffic light for trading. It watches the price of Gold (or BTC/ETH) around the clock and tells you when conditions look good to BUY or SELL — based on a rule-based method called MA Crossover.'
-                : '把這個 App 想像成一個交通燈號系統。它全天候監測黃金（或BTC/ETH）的價格，在條件成熟時告訴你「適合買入」或「適合賣出」——基於一套叫做「K均交易法」的規則系統。'}
+                ? 'A traffic light for trading. It watches Gold / BTC / ETH around the clock and alerts you when rule-based conditions are met to BUY or SELL.'
+                : '一個交易用的交通燈號系統。全天候監測黃金/BTC/ETH，在規則條件滿足時提示你買入或賣出。'}
             </p>
-            <p style={guide.p}>
-              {isEN
-                ? '⚠️ It does NOT place trades for you. It only shows signals. Always do your own research.'
-                : '⚠️ 它不會自動下單，只顯示訊號供參考。請自行判斷是否入場。'}
-            </p>
+            <p style={guide.p}>{isEN ? '⚠️ It shows signals only — it does NOT place trades for you.' : '⚠️ 只顯示訊號，不會自動下單。'}</p>
           </Section>
 
-          {/* Price / MA */}
-          <Section color="#29b6f6" title={isEN ? '📊 What are the numbers on the dashboard?' : '📊 面板上的數字是什麼意思？'}>
+          <Section color="#29b6f6" title={isEN ? '📊 Dashboard numbers explained' : '📊 面板數字說明'}>
             <GuideItem tag={isEN ? 'Current Price' : '現價'} tagColor="#f0b90b">
-              {isEN
-                ? 'The live market price of the asset right now. Updates every 10 seconds. Like the price tag on a shelf — it changes constantly.'
-                : '資產當前的即時市場價格，每10秒更新一次。就像超市貨架上的價格標籤，隨時在變動。'}
+              {isEN ? 'The live price right now, updated every 10 seconds. Like the price tag on a shelf.' : '即時市場價格，每10秒更新。就像貨架上的標價貼，隨時在變。'}
             </GuideItem>
             <GuideItem tag="MA20" tagColor="#29b6f6">
-              {isEN
-                ? 'The average closing price of the last 20 candles (bars on the chart). Think of it as the "recent mood" of the market. Price above MA20 = market is in a bullish (upward) mood.'
-                : '最近 20 根 K 線收盤價的平均值。想像它是市場的「近期情緒」。價格在 MA20 之上 = 市場處於上升情緒（多頭）。'}
+              {isEN ? 'Average of last 20 candle closes — the market\'s "recent mood". Above it = bullish.' : '最近20根K線收盤均值——市場的「近期情緒」。現價在上 = 多頭。'}
             </GuideItem>
             <GuideItem tag="MA60" tagColor="#ab47bc">
-              {isEN
-                ? 'The average of the last 60 candles — the "big picture" trend. Price below MA60 = the longer-term direction is downward (bearish).'
-                : '最近 60 根 K 線的平均值，代表「大方向」趨勢。價格在 MA60 之下 = 長期方向向下（空頭）。'}
+              {isEN ? 'Average of last 60 candles — big-picture direction. Below it = bearish.' : '最近60根K線均值——大方向趨勢。現價在下 = 空頭。'}
             </GuideItem>
             <GuideItem tag={isEN ? 'Trend' : '趨勢'} tagColor="#888">
-              {isEN
-                ? 'Compares current price with MA20. "Bullish" = price is above the line (like a boat riding above water). "Bearish" = price is below the line (boat sinking below water).'
-                : '比較現價與 MA20。「多頭」= 價格在線之上（像船浮在水面上）。「空頭」= 價格在線之下（船沉在水面下）。'}
+              {isEN ? 'Bullish = price above MA20 (boat on water). Bearish = price below (boat sinking).' : '多頭 = 價格浮在MA20上（船在水面）。空頭 = 價格沉在線下（船沉水底）。'}
             </GuideItem>
           </Section>
 
-          {/* Signals */}
-          <Section color="#00c853" title={isEN ? '🚦 What do signals mean?' : '🚦 訊號是什麼意思？'}>
-            <GuideItem tag={isEN ? '🟢 BUY Signal' : '🟢 買入訊號'} tagColor="#00c853">
-              {isEN
-                ? 'Price crossed above MA20 and hit a new recent high. The rule says: "When above the line, go long (buy)." Like a green traffic light — conditions look good to enter a long trade.'
-                : '價格突破 MA20 並創近期新高。規則說：「線上做多（買入）。」就像綠燈亮起——條件符合，可考慮做多入場。'}
+          <Section color="#00c853" title={isEN ? '🚦 What triggers a signal?' : '🚦 什麼情況會觸發訊號？'}>
+            <GuideItem tag={isEN ? '🟢 BUY' : '🟢 買入'} tagColor="#00c853">
+              {isEN ? 'Price is above MA20 + within 0.5% of MA20 + current candle makes a new high. All 3 together = green light.' : '現價在MA20上方 + 距MA20在0.5%以內 + 本根K線創新高。三個同時滿足 = 綠燈。'}
             </GuideItem>
-            <GuideItem tag={isEN ? '🔴 SELL Signal' : '🔴 賣出訊號'} tagColor="#ff1744">
-              {isEN
-                ? 'Price dropped below MA60 and hit a new recent low. The rule says: "When below the line, go short (sell)." Like a red traffic light — conditions suggest a downward move.'
-                : '價格跌破 MA60 並創近期新低。規則說：「線下做空（賣出）。」就像紅燈亮起——條件顯示市場向下。'}
+            <GuideItem tag={isEN ? '🔴 SELL' : '🔴 賣出'} tagColor="#ff1744">
+              {isEN ? 'Price is below MA60 + within 0.5% of MA60 + current candle makes a new low. All 3 together = red light.' : '現價在MA60下方 + 距MA60在0.5%以內 + 本根K線創新低。三個同時滿足 = 紅燈。'}
             </GuideItem>
-            <GuideItem tag={isEN ? '⏳ Waiting' : '⏳ 等待中'} tagColor="#888">
-              {isEN
-                ? 'No signal yet. Price hasn\'t reached the MA level. The rule is: "Only act when price reaches the line — don\'t chase." Like waiting at an amber light.'
-                : '暫時無訊號。價格尚未到達 MA 的位置。規則說：「到位才動，不到位不追。」就像黃燈——繼續等待。'}
+            <GuideItem tag={isEN ? '⏳ Waiting' : '⏳ 等待'} tagColor="#888">
+              {isEN ? 'Not all 3 conditions are met yet. The checklist above shows exactly how far away each condition is in real dollars.' : '3個條件未同時滿足。上方的條件清單會實時顯示每個條件距離觸發還差多少美元。'}
             </GuideItem>
           </Section>
 
-          {/* SL / TP */}
-          <Section color="#ff9800" title={isEN ? '💰 Stop Loss & Take Profit — why do they matter?' : '💰 止蝕 & 止盈 — 為什麼重要？'}>
-            <GuideItem tag={isEN ? '🛑 Stop Loss (S/L)' : '🛑 止蝕'} tagColor="#ff1744">
-              {isEN
-                ? 'A pre-set exit price that limits your loss if the trade goes wrong. Set at entry −1% (buy) or +1% (sell). Think of it as an insurance policy: you pay a small premium (the 1% loss) to protect against a bigger disaster.'
-                : '預設的離場價格，限制交易出錯時的虧損。設於入場價 -1%（買入）或 +1%（賣出）。想像它是保險：付出小額保費（1% 虧損）來防範更大的損失。'}
+          <Section color="#ff9800" title={isEN ? '💰 Stop Loss & Take Profit' : '💰 止蝕 & 止盈'}>
+            <GuideItem tag={isEN ? '🛑 Stop Loss' : '🛑 止蝕'} tagColor="#ff1744">
+              {isEN ? 'Auto-exit if price moves against you by 1%. Like an insurance policy — small fixed cost to avoid a big disaster.' : '若價格反向移動1%自動離場。就像保險——付小額保費防大損失。'}
             </GuideItem>
-            <GuideItem tag={isEN ? '🎯 Take Profit (T/P)' : '🎯 止盈'} tagColor="#00c853">
-              {isEN
-                ? 'A pre-set exit price that locks in your profit. Set at entry +3% (buy) or −3% (sell). You aim to earn 3× what you risk.'
-                : '預設的目標離場價格，鎖定利潤。設於入場價 +3%（買入）或 -3%（賣出）。目標是賺取風險的3倍。'}
+            <GuideItem tag={isEN ? '🎯 Take Profit' : '🎯 止盈'} tagColor="#00c853">
+              {isEN ? 'Target exit at +3% profit. You aim to earn 3× what you risk.' : '目標在+3%利潤離場。目標是賺取風險的3倍。'}
             </GuideItem>
-            <GuideItem tag={isEN ? '📊 R:R Ratio 3:1' : '📊 盈虧比 3:1'} tagColor="#f0b90b">
-              {isEN
-                ? 'For every $1 you risk, you aim to make $3. This means even if only 4 trades out of 10 win, you still make an overall profit. It\'s the math that makes the system work long-term.'
-                : '每冒險 $1，目標賺取 $3。這意味著即使10次交易只有4次勝出，整體仍然盈利。這就是系統長期有效的數學基礎。'}
+            <GuideItem tag={isEN ? '⚖️ R:R 3:1' : '⚖️ 盈虧比 3:1'} tagColor="#f0b90b">
+              {isEN ? 'For every $1 risked, target $3 profit. Even with only 40% wins, you\'re profitable long-term.' : '每冒$1風險，目標賺$3。即使只有40%勝率，長期仍盈利。'}
             </GuideItem>
           </Section>
 
           <div style={{ background: '#1a1500', border: '1px solid #f0b90b44', borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem', color: '#f0b90b', lineHeight: 1.7 }}>
-            {isEN
-              ? '⚠️ This app is for educational reference only. Signals do not guarantee profit. Always practice with Paper Trading first before using real money.'
-              : '⚠️ 本 App 僅供教學參考。訊號不保證盈利。在使用真實資金前，請先在「模擬盤」模式中充分練習。'}
+            {isEN ? '⚠️ For educational reference only. Not financial advice. Always practice with Paper Trading before using real money.' : '⚠️ 僅供教學參考，非投資建議。使用真實資金前請先在模擬盤充分練習。'}
           </div>
         </div>
       )}
@@ -158,71 +362,42 @@ function GuideItem({ tag, tagColor, children }: { tag: string; tagColor: string;
   );
 }
 
+// ─── Main Export ───────────────────────────────────────────────────────────────
 export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang }: Props) {
   const latestMA20 = ma20[ma20.length - 1]?.value ?? null;
   const latestMA60 = ma60[ma60.length - 1]?.value ?? null;
   const isEN = lang === 'EN';
   const isBull = lastPrice && latestMA20 ? lastPrice > latestMA20 : null;
 
-  const ma20Tip = isEN
-    ? 'Average of last 20 candles. Think of it as the short-term mood of the market. Price above = bullish.'
-    : '最近20根K線平均值，代表市場「近期情緒」。現價在線上 = 多頭（上升）。';
-  const ma60Tip = isEN
-    ? 'Average of last 60 candles — the big-picture trend indicator. Price below = bearish.'
-    : '最近60根K線平均值，代表「大方向」趨勢。現價在線下 = 空頭（下跌）。';
-  const trendTip = isEN
-    ? 'Compares price vs MA20. Bullish = price floating above the line like a boat on water.'
-    : '比較現價與MA20：多頭 = 價格浮在線上如船在水面；空頭 = 價格沉在線下。';
-  const priceTip = isEN ? 'Live market price, updates every 10 seconds.' : '即時市場價格，每10秒自動更新。';
-
   return (
     <div style={styles.panel}>
       {/* Title */}
-      <div style={styles.titleRow}>
-        <div>
-          <div style={styles.title}>{isEN ? '📊 MA Signal Dashboard' : '📊 K均訊號面板'}</div>
-          <div style={styles.subtitle}>{isEN ? 'Real-time buy/sell signals based on Moving Average rules' : '基於移動平均線規則的即時買賣訊號'}</div>
-        </div>
+      <div>
+        <div style={styles.title}>{isEN ? '📊 MA Signal Dashboard' : '📊 K均訊號面板'}</div>
+        <div style={styles.subtitle}>{isEN ? 'Real-time buy/sell signals based on Moving Average rules' : '基於移動平均線規則的即時買賣訊號'}</div>
       </div>
 
       {/* Stat Cards */}
       <div style={styles.statsRow}>
-        <StatCard
-          label={isEN ? 'Current Price' : '現價 (USDT)'}
-          value={`$${lastPrice?.toFixed(2) ?? '---'}`}
-          color="#f0b90b"
-          tip={priceTip}
-          sub={isEN ? 'Updates every 10s' : '每10秒更新'}
-        />
-        <StatCard
-          label="MA20"
-          value={`$${latestMA20?.toFixed(2) ?? '---'}`}
-          color="#29b6f6"
-          tip={ma20Tip}
-          sub={isEN ? 'Short-term avg' : '短期均線'}
-        />
-        <StatCard
-          label="MA60"
-          value={`$${latestMA60?.toFixed(2) ?? '---'}`}
-          color="#ab47bc"
-          tip={ma60Tip}
-          sub={isEN ? 'Long-term avg' : '長期均線'}
-        />
+        <StatCard label={isEN ? 'Current Price' : '現價 (USDT)'} value={`$${lastPrice?.toFixed(2) ?? '---'}`} color="#f0b90b"
+          tip={isEN ? 'Live market price, updates every 10 seconds.' : '即時市場價格，每10秒自動更新。'}
+          sub={isEN ? 'Updates every 10s' : '每10秒更新'} />
+        <StatCard label="MA20" value={`$${latestMA20?.toFixed(2) ?? '---'}`} color="#29b6f6"
+          tip={isEN ? 'Average of last 20 candles. Short-term trend. Price above = bullish.' : '最近20根K線均值，短期趨勢。現價在上 = 多頭。'}
+          sub={isEN ? 'Short-term avg' : '短期均線'} />
+        <StatCard label="MA60" value={`$${latestMA60?.toFixed(2) ?? '---'}`} color="#ab47bc"
+          tip={isEN ? 'Average of last 60 candles. Big-picture trend. Price below = bearish.' : '最近60根K線均值，長期趨勢。現價在下 = 空頭。'}
+          sub={isEN ? 'Long-term avg' : '長期均線'} />
         <StatCard
           label={isEN ? 'Trend' : '趨勢'}
-          value={
-            isBull === null ? '---'
-            : isBull ? (isEN ? '⬆ Bullish' : '⬆ 多頭')
-            : (isEN ? '⬇ Bearish' : '⬇ 空頭')
-          }
+          value={isBull === null ? '---' : isBull ? (isEN ? '⬆ Bullish' : '⬆ 多頭') : (isEN ? '⬇ Bearish' : '⬇ 空頭')}
           color={isBull === null ? '#888' : isBull ? '#00c853' : '#ff1744'}
-          tip={trendTip}
-          sub={isEN ? 'Price vs MA20' : '現價 vs MA20'}
-        />
+          tip={isEN ? 'Bullish = price above MA20 (boat on water). Bearish = price below (boat sinking).' : '多頭 = 價格浮在MA20上如船在水面；空頭 = 沉在線下。'}
+          sub={isEN ? 'Price vs MA20' : '現價 vs MA20'} />
       </div>
 
-      {/* Signal Box */}
-      <div style={styles.signalSection}>
+      {/* Signal or Wait */}
+      <div>
         <div style={styles.sectionLabel}>{isEN ? '🚦 LIVE SIGNAL' : '🚦 即時訊號'}</div>
         {signal ? (
           <div style={{
@@ -235,67 +410,32 @@ export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang }: Pro
               <span style={{ fontSize: '2.2rem', lineHeight: 1 }}>{signal.type === 'LONG' ? '🟢' : '🔴'}</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: signal.type === 'LONG' ? '#00c853' : '#ff1744' }}>
-                  {signal.type === 'LONG'
-                    ? (isEN ? 'BUY / Long Entry Signal' : '買入（做多）入場訊號')
-                    : (isEN ? 'SELL / Short Entry Signal' : '賣出（做空）入場訊號')}
+                  {signal.type === 'LONG' ? (isEN ? 'BUY / Long Entry Signal' : '買入（做多）入場訊號') : (isEN ? 'SELL / Short Entry Signal' : '賣出（做空）入場訊號')}
                 </div>
                 <div style={{ fontSize: '0.82rem', color: '#bbb', marginTop: 4, lineHeight: 1.5 }}>{signal.message}</div>
               </div>
             </div>
-            {/* Entry levels */}
             <div style={styles.levelsRow}>
-              <LevelBadge
-                icon="📍"
-                label={isEN ? 'Entry' : '入場'}
-                value={`$${signal.price.toFixed(2)}`}
-                color="#f0b90b"
-                tip={isEN ? 'Suggested entry price when signal triggered' : '訊號觸發時的建議入場價格'}
-              />
-              <LevelBadge
-                icon="🛑"
-                label={isEN ? 'Stop Loss' : '止蝕'}
-                value={`$${(signal.type === 'LONG' ? signal.price * 0.99 : signal.price * 1.01).toFixed(2)}`}
-                color="#ff5252"
-                tip={isEN ? 'Exit here if trade goes wrong. Limits your loss to ~1%.'
-                  : '若交易出錯，在此價格離場，損失限制在約1%。'}
-              />
-              <LevelBadge
-                icon="🎯"
-                label={isEN ? 'Take Profit' : '止盈'}
-                value={`$${(signal.type === 'LONG' ? signal.price * 1.03 : signal.price * 0.97).toFixed(2)}`}
-                color="#00c853"
-                tip={isEN ? 'Target exit to lock in profit. Profit is 3× the stop loss distance.'
-                  : '目標離場價格，利潤為止蝕距離的3倍。'}
-              />
-              <LevelBadge
-                icon="⚖️"
-                label={isEN ? 'R:R Ratio' : '盈虧比'}
-                value="3 : 1"
-                color="#f0b90b"
-                tip={isEN ? 'For every $1 risked, you aim to make $3. Even with a 40% win rate, this strategy stays profitable long-term.'
-                  : '每冒 $1 風險，目標賺取 $3。即使只有40%勝率，長期仍然盈利。'}
-              />
+              <LevelBadge icon="📍" label={isEN ? 'Entry' : '入場'} value={`$${signal.price.toFixed(2)}`} color="#f0b90b"
+                tip={isEN ? 'Suggested entry price when signal triggered' : '訊號觸發時的建議入場價格'} />
+              <LevelBadge icon="🛑" label={isEN ? 'Stop Loss' : '止蝕'}
+                value={`$${(signal.type === 'LONG' ? signal.price * 0.99 : signal.price * 1.01).toFixed(2)}`} color="#ff5252"
+                tip={isEN ? 'Exit here if trade goes wrong. Limits your loss to ~1%.' : '交易出錯時在此離場，損失限制在約1%。'} />
+              <LevelBadge icon="🎯" label={isEN ? 'Take Profit' : '止盈'}
+                value={`$${(signal.type === 'LONG' ? signal.price * 1.03 : signal.price * 0.97).toFixed(2)}`} color="#00c853"
+                tip={isEN ? 'Target exit. Profit = 3× stop loss distance.' : '目標離場。利潤 = 止蝕距離的3倍。'} />
+              <LevelBadge icon="⚖️" label={isEN ? 'R:R Ratio' : '盈虧比'} value="3 : 1" color="#f0b90b"
+                tip={isEN ? 'Risk $1 to make $3. Works long-term even at 40% win rate.' : '冒$1賺$3。即使40%勝率長期仍盈利。'} />
             </div>
           </div>
         ) : (
-          <div style={styles.waitCard}>
-            <div style={styles.waitIcon}>⏳</div>
-            <div>
-              <div style={styles.waitTitle}>{isEN ? 'Waiting for signal...' : '等待訊號中...'}</div>
-              <div style={styles.waitDesc}>
-                {isEN
-                  ? 'Price needs to approach the MA level (within 0.5%) and form a new high/low. Rule: "Only act when price reaches the line — never chase."'
-                  : '需要價格接近 MA 位置（0.5%內）並創新高/新低才觸發。規則：「到位才動，不到位不追。」'}
-              </div>
-            </div>
-          </div>
+          <WaitCard lastPrice={lastPrice} latestMA20={latestMA20} latestMA60={latestMA60} isEN={isEN} />
         )}
       </div>
 
-      {/* Beginner Guide */}
       <BeginnerGuide lang={lang} />
 
-      {/* 3 Rules Footer */}
+      {/* 3 Rules */}
       <div style={styles.rulesFooter}>
         <div style={styles.rulesTitle}>{isEN ? '📖 The 3 MA Rules' : '📖 K均三大原則'}</div>
         <div style={styles.rulesRow}>
@@ -311,8 +451,8 @@ export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang }: Pro
 function LevelBadge({ icon, label, value, color, tip }: { icon: string; label: string; value: string; color: string; tip: string }) {
   return (
     <Tip text={tip}>
-      <div style={{ background: color + '18', border: `1px solid ${color}55`, borderRadius: 8, padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 2, cursor: 'help', minWidth: 90, flex: 1 }}>
-        <div style={{ fontSize: '0.67rem', color: color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{icon} {label}</div>
+      <div style={{ background: color + '18', border: `1px solid ${color}55`, borderRadius: 8, padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 2, cursor: 'help', flex: 1, minWidth: 90 }}>
+        <div style={{ fontSize: '0.67rem', color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{icon} {label}</div>
         <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color, fontFamily: 'monospace' }}>{value}</div>
       </div>
     </Tip>
@@ -330,19 +470,13 @@ function RulePill({ num, text, color }: { num: string; color: string; text: stri
 
 const styles: Record<string, React.CSSProperties> = {
   panel: { background: '#12122a', border: '1px solid #2a2a3e', borderRadius: 14, padding: '20px', color: '#fff', fontFamily: 'monospace', maxWidth: 700, width: '100%', display: 'flex', flexDirection: 'column', gap: 18 },
-  titleRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
   title: { fontSize: '1rem', fontWeight: 'bold', color: '#fff', margin: 0 },
   subtitle: { fontSize: '0.72rem', color: '#555', marginTop: 3 },
   statsRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 },
   sectionLabel: { fontSize: '0.68rem', color: '#555', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 },
-  signalSection: {},
   signalCard: { border: '1px solid', borderRadius: 12, padding: '16px', display: 'flex', flexDirection: 'column', gap: 14 },
   signalTop: { display: 'flex', gap: 14, alignItems: 'flex-start' },
   levelsRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 },
-  waitCard: { display: 'flex', gap: 14, alignItems: 'flex-start', background: '#16161e', border: '1px dashed #333', borderRadius: 12, padding: '16px' },
-  waitIcon: { fontSize: '1.8rem', lineHeight: 1 },
-  waitTitle: { fontSize: '0.95rem', color: '#666', fontWeight: 'bold' },
-  waitDesc: { fontSize: '0.78rem', color: '#444', marginTop: 6, lineHeight: 1.6 },
   rulesFooter: { background: '#0f0f1a', border: '1px solid #1a1a2e', borderRadius: 10, padding: '12px 14px' },
   rulesTitle: { fontSize: '0.68rem', color: '#555', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 },
   rulesRow: { display: 'flex', gap: 8, flexWrap: 'wrap' },
@@ -360,4 +494,15 @@ const guide: Record<string, React.CSSProperties> = {
   toggle: { width: '100%', background: '#16161e', border: '1px solid #2a2a3e', color: '#888', padding: '10px 14px', borderRadius: 8, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.82rem', display: 'flex', gap: 8, alignItems: 'center', textAlign: 'left' },
   body: { background: '#0d0d1e', border: '1px solid #2a2a3e', borderTop: 'none', borderRadius: '0 0 10px 10px', padding: '18px', display: 'flex', flexDirection: 'column', gap: 18 },
   p: { margin: '0 0 4px', fontSize: '0.8rem', color: '#aaa', lineHeight: 1.7 },
+};
+
+const wS: Record<string, React.CSSProperties> = {
+  card: { background: '#0f0f1a', border: '1px dashed #2a2a3e', borderRadius: 12, padding: '16px', display: 'flex', flexDirection: 'column', gap: 14 },
+  header: { display: 'flex', gap: 12, alignItems: 'flex-start' },
+  icon: { fontSize: '1.5rem', flexShrink: 0 },
+  title: { fontSize: '0.95rem', color: '#888', fontWeight: 'bold', margin: 0 },
+  subtitle: { fontSize: '0.75rem', color: '#555', marginTop: 4, lineHeight: 1.5 },
+  analogy: { display: 'flex', gap: 10, alignItems: 'flex-start', background: '#16161e', border: '1px solid #2a2a3e', borderRadius: 8, padding: '10px 12px' },
+  divider: { borderTop: '1px solid #1a1a2e' },
+  hint: { background: '#1a1a2e', borderRadius: 8, padding: '9px 12px', fontSize: '0.78rem', color: '#888', lineHeight: 1.6 },
 };
