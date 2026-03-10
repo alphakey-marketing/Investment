@@ -21,6 +21,7 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
   const [tradeType, setTradeType] = useState<'LONG' | 'SHORT'>(signal?.type ?? 'LONG');
   const [added, setAdded] = useState(false);
 
+  const isEN = lang === 'EN';
   const entryPrice = parseFloat(customEntry) || signal?.price || lastPrice || 0;
   const capitalNum = parseFloat(capital) || 0;
   const riskPctNum = parseFloat(riskPct) || 2;
@@ -78,12 +79,36 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
 
       {open && (
         <div style={styles.body}>
+
+          {/* ── Beginner starter tip ──────────────────────────────── */}
+          <div style={styles.starterTip}>
+            <span style={{ fontSize: '1.1rem' }}>🌱</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: '0.8rem', color: '#f0b90b', fontWeight: 'bold' }}>
+                {isEN ? 'Beginner recommended settings:' : '新手建議設定：'}
+              </span>
+              <div style={styles.tipGrid}>
+                <TipChip icon="💰" label={isEN ? 'Capital' : '資本'} value={isEN ? '$1,000 to start' : '從 $1,000 開始'} desc={isEN ? 'Keep it small while learning. You can adjust later.' : '學習期間保持小額，之後可調整。'} />
+                <TipChip icon="⚠️" label={isEN ? 'Risk %' : '風險 %'} value="2%" desc={isEN ? 'Risk 2% of capital per trade — the professional standard.' : '每次交易風險資本的 2%，這是專業標準。'} />
+                <TipChip icon="🛑" label={isEN ? 'Stop Loss' : '止蝕'} value="1%" desc={isEN ? 'Exit automatically if price moves 1% against you.' : '價格逆向移動 1% 時自動出場。'} />
+                <TipChip icon="🎯" label={isEN ? 'Take Profit' : '止盈'} value={isEN ? '3% (3:1 R:R)' : '3%（3:1 風報比）'} desc={isEN ? 'Target 3× what you risk. This is the 3:1 reward-to-risk ratio.' : '目標獲利是風險的 3 倍，即 3:1 風報比。'} />
+              </div>
+              <div style={styles.rrExplain}>
+                {isEN
+                  ? '📐 What is R:R? — If your stop loss risks $20, your take profit targets $60. Even if you only win 40% of trades, you still profit long-term.'
+                  : '📐 什麼是風報比？— 若止蝕風險 $20，止盈目標 $60。即使只有 40% 的交易獲勝，長期也能獲利。'}
+              </div>
+            </div>
+          </div>
+
           <div style={styles.grid}>
             <Field label={tr('totalCapital', lang)} tooltip={tr('totalCapTip', lang)}>
               <input style={styles.input} type="number" value={capital} onChange={(e) => setCapital(e.target.value)} placeholder="1000" />
+              <span style={styles.fieldHint}>{isEN ? '💡 Start with $1,000 — adjust as you gain confidence' : '💡 建議從 $1,000 開始，熟悉後再調整'}</span>
             </Field>
             <Field label={tr('riskPct', lang)} tooltip={tr('riskPctTip', lang)}>
               <input style={styles.input} type="number" value={riskPct} min="0.1" max="100" step="0.5" onChange={(e) => setRiskPct(e.target.value)} placeholder="2" />
+              <span style={styles.fieldHint}>{isEN ? '💡 2% = $20 risk on $1,000. Never exceed 5%.' : '💡 2% = $1,000 中風險 $20。切勿超過 5%。'}</span>
             </Field>
             <Field label={tr('direction', lang)}>
               <div style={{ display: 'flex', gap: 6 }}>
@@ -96,6 +121,7 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
                   </button>
                 ))}
               </div>
+              <span style={styles.fieldHint}>{isEN ? 'Match the signal direction above' : '請與上方訊號方向一致'}</span>
             </Field>
             <Field label={tr('entryPrice', lang)} tooltip={tr('entryTip', lang)}>
               <input style={styles.input} type="number" value={customEntry} onChange={(e) => setCustomEntry(e.target.value)}
@@ -150,6 +176,16 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
   );
 }
 
+function TipChip({ icon, label, value, desc }: { icon: string; label: string; value: string; desc: string }) {
+  return (
+    <div style={{ background: '#0f0f1a', border: '1px solid #f0b90b22', borderRadius: 8, padding: '8px 10px' }}>
+      <div style={{ fontSize: '0.72rem', color: '#888', fontFamily: 'monospace', marginBottom: 2 }}>{icon} {label}</div>
+      <div style={{ fontSize: '0.82rem', color: '#f0b90b', fontWeight: 'bold', fontFamily: 'monospace' }}>{value}</div>
+      <div style={{ fontSize: '0.68rem', color: '#444', fontFamily: 'monospace', marginTop: 2, lineHeight: 1.4 }}>{desc}</div>
+    </div>
+  );
+}
+
 function Field({ label, tooltip, children }: { label: string; tooltip?: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -175,6 +211,10 @@ const styles: Record<string, React.CSSProperties> = {
   wrapper: { maxWidth: 700, width: '100%' },
   toggleBtn: { width: '100%', background: '#1a1a2e', border: '1px solid #2a2a3e', color: '#f0b90b', padding: '10px 16px', borderRadius: 10, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.85rem', display: 'flex', alignItems: 'center', textAlign: 'left' },
   body: { background: '#13131f', border: '1px solid #2a2a3e', borderTop: 'none', borderRadius: '0 0 10px 10px', padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 },
+  starterTip: { display: 'flex', gap: 12, alignItems: 'flex-start', background: '#1a1500', border: '1px solid #f0b90b33', borderRadius: 10, padding: '12px 14px' },
+  tipGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginTop: 4 },
+  rrExplain: { fontSize: '0.74rem', color: '#666', fontFamily: 'monospace', background: '#0f0f1a', border: '1px solid #1a1a2e', borderRadius: 6, padding: '8px 10px', lineHeight: 1.6, marginTop: 4 },
+  fieldHint: { fontSize: '0.65rem', color: '#3a3a2a', fontFamily: 'monospace', lineHeight: 1.4 },
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 },
   input: { background: '#0f0f1a', border: '1px solid #2a2a3e', color: '#fff', padding: '6px 10px', borderRadius: 6, fontFamily: 'monospace', fontSize: '0.82rem', outline: 'none', width: '100%' },
   typeBtn: { background: '#0f0f1a', border: '1px solid #2a2a3e', color: '#666', padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.78rem' },

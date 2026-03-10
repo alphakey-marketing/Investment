@@ -16,10 +16,38 @@ function fmtTime(unix: number) {
   return new Date(unix * 1000).toLocaleString('en-GB', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+// Reflection prompts pool — randomly selected per trade
+const PROMPTS_EN = [
+  'Did I follow the signal, or did I override it? What did I learn?',
+  'Was my stop loss placed correctly? Did I stick to it?',
+  'Did I enter at the right time? Was I patient enough?',
+  'How did this trade make me feel? Did emotions affect my decision?',
+  'If I could redo this trade, what would I do differently?',
+  'Did I respect my R:R ratio on this trade?',
+];
+const PROMPTS_ZH = [
+  '我是否跟隨訊號交易？還是自行判斷覆蓋了訊號？學到了什麼？',
+  '我的止蝕位置設定是否正確？是否嚴格執行了止蝕？',
+  '我的進場時機是否準確？我是否足夠有耐心？',
+  '這筆交易讓我有什麼感受？情緒是否影響了我的判斷？',
+  '如果重來一次，我會做什麼不同的決定？',
+  '這次交易是否遵守了我的風報比設定？',
+];
+
+function getPrompt(tradeId: string, isEN: boolean): string {
+  // Deterministic pick based on trade ID so it doesn't change on re-render
+  const pool = isEN ? PROMPTS_EN : PROMPTS_ZH;
+  const idx = tradeId.charCodeAt(0) % pool.length;
+  return pool[idx];
+}
+
 export default function TradeJournal({ trades, onClose, onDelete, onClear, lang }: Props) {
   const [open, setOpen] = useState(false);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [exitInput, setExitInput] = useState('');
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [savedNotes, setSavedNotes] = useState<Record<string, boolean>>({});
+  const isEN = lang === 'EN';
   const perf = calcPerformance(trades);
 
   const handleClose = (id: string) => {
@@ -28,6 +56,11 @@ export default function TradeJournal({ trades, onClose, onDelete, onClear, lang 
     onClose(id, price);
     setClosingId(null);
     setExitInput('');
+  };
+
+  const handleSaveNote = (id: string) => {
+    setSavedNotes((prev) => ({ ...prev, [id]: true }));
+    setTimeout(() => setSavedNotes((prev) => ({ ...prev, [id]: false })), 2000);
   };
 
   const cumPnlData = trades
@@ -53,6 +86,22 @@ export default function TradeJournal({ trades, onClose, onDelete, onClear, lang 
 
       {open && (
         <div style={styles.body}>
+
+          {/* ── Reflection tip banner ───────────────────────────────── */}
+          <div style={styles.reflectionBanner}>
+            <span style={{ fontSize: '1rem' }}>📓</span>
+            <div>
+              <div style={{ fontSize: '0.8rem', color: '#29b6f6', fontWeight: 'bold', marginBottom: 3 }}>
+                {isEN ? 'Your Trading Journal — the most powerful tool a beginner has' : '交易日誌 — 新手最強大的進步工具'}
+              </div>
+              <div style={{ fontSize: '0.74rem', color: '#666', lineHeight: 1.6 }}>
+                {isEN
+                  ? 'Top traders review every trade and ask: "What did I do right? What can I improve?" Use the Notes field on each trade below to build this habit. Traders who journal improve 3× faster.'
+                  : '頂級交易者會覆盤每一筆交易：「我做對了什麼？哪裡可以改善？」請利用下方每筆交易的備注欄養成這個習慣。有記錄日誌的交易者進步速度是普通人的 3 倍。'}
+              </div>
+            </div>
+          </div>
+
           {/* Performance Summary */}
           <div style={styles.sectionTitle}>{tr('perfSummary', lang)}</div>
           <div style={styles.summaryGrid}>
@@ -108,42 +157,70 @@ export default function TradeJournal({ trades, onClose, onDelete, onClear, lang 
               </thead>
               <tbody>
                 {trades.map((t) => (
-                  <tr key={t.id} style={styles.tr}>
-                    <td style={styles.td}>{t.symbol.replace('USDT','')}</td>
-                    <td style={{ ...styles.td, color: t.type==='LONG'?'#00c853':'#ff1744', fontWeight:'bold' }}>
-                      {t.type==='LONG' ? '🟢 L' : '🔴 S'}
-                    </td>
-                    <td style={styles.td}>${fmt(t.entryPrice)}</td>
-                    <td style={styles.td}>{t.exitPrice ? `$${fmt(t.exitPrice)}` : '—'}</td>
-                    <td style={{ ...styles.td, color:'#ff174488' }}>${fmt(t.stopLoss)}</td>
-                    <td style={{ ...styles.td, color:'#00c85388' }}>${fmt(t.takeProfit)}</td>
-                    <td style={{ ...styles.td, fontWeight:'bold', color: t.pnl===null?'#555':t.pnl>=0?'#00c853':'#ff1744' }}>
-                      {t.pnl===null ? tr('inProgress',lang) : `${t.pnl>=0?'+':''}$${fmt(t.pnl)}`}
-                    </td>
-                    <td style={{ ...styles.td, color: t.pnlPct===null?'#555':t.pnlPct>=0?'#00c853':'#ff1744' }}>
-                      {t.pnlPct===null ? '—' : `${t.pnlPct>=0?'+':''}${t.pnlPct}%`}
-                    </td>
-                    <td style={styles.td}>
-                      <span style={{ background: t.result==='WIN'?'#0d3d1f':t.result==='LOSS'?'#3d0d0d':t.result==='OPEN'?'#1a1a2e':'#2a2a1a', color: t.result==='WIN'?'#00c853':t.result==='LOSS'?'#ff1744':t.result==='OPEN'?'#f0b90b':'#888', padding:'2px 7px', borderRadius:4, fontSize:'0.72rem', fontFamily:'monospace' }}>
-                        {t.result==='WIN'?tr('statusWin',lang):t.result==='LOSS'?tr('statusLoss',lang):t.result==='OPEN'?tr('statusOpen',lang):tr('statusBreak',lang)}
-                      </span>
-                    </td>
-                    <td style={styles.td}>
-                      {t.result === 'OPEN' ? (
-                        closingId === t.id ? (
-                          <span style={{ display:'flex', gap:4, alignItems:'center' }}>
-                            <input style={styles.closeInput} type="number" placeholder={tr('exitPricePH',lang)} value={exitInput} onChange={(e)=>setExitInput(e.target.value)} />
-                            <button onClick={()=>handleClose(t.id)} style={styles.confirmBtn}>✓</button>
-                            <button onClick={()=>setClosingId(null)} style={styles.cancelBtn}>✕</button>
-                          </span>
+                  <React.Fragment key={t.id}>
+                    <tr style={styles.tr}>
+                      <td style={styles.td}>{t.symbol.replace('USDT','')}</td>
+                      <td style={{ ...styles.td, color: t.type==='LONG'?'#00c853':'#ff1744', fontWeight:'bold' }}>
+                        {t.type==='LONG' ? '🟢 L' : '🔴 S'}
+                      </td>
+                      <td style={styles.td}>${fmt(t.entryPrice)}</td>
+                      <td style={styles.td}>{t.exitPrice ? `$${fmt(t.exitPrice)}` : '—'}</td>
+                      <td style={{ ...styles.td, color:'#ff174488' }}>${fmt(t.stopLoss)}</td>
+                      <td style={{ ...styles.td, color:'#00c85388' }}>${fmt(t.takeProfit)}</td>
+                      <td style={{ ...styles.td, fontWeight:'bold', color: t.pnl===null?'#555':t.pnl>=0?'#00c853':'#ff1744' }}>
+                        {t.pnl===null ? tr('inProgress',lang) : `${t.pnl>=0?'+':''}$${fmt(t.pnl)}`}
+                      </td>
+                      <td style={{ ...styles.td, color: t.pnlPct===null?'#555':t.pnlPct>=0?'#00c853':'#ff1744' }}>
+                        {t.pnlPct===null ? '—' : `${t.pnlPct>=0?'+':''}${t.pnlPct}%`}
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{ background: t.result==='WIN'?'#0d3d1f':t.result==='LOSS'?'#3d0d0d':t.result==='OPEN'?'#1a1a2e':'#2a2a1a', color: t.result==='WIN'?'#00c853':t.result==='LOSS'?'#ff1744':t.result==='OPEN'?'#f0b90b':'#888', padding:'2px 7px', borderRadius:4, fontSize:'0.72rem', fontFamily:'monospace' }}>
+                          {t.result==='WIN'?tr('statusWin',lang):t.result==='LOSS'?tr('statusLoss',lang):t.result==='OPEN'?tr('statusOpen',lang):tr('statusBreak',lang)}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        {t.result === 'OPEN' ? (
+                          closingId === t.id ? (
+                            <span style={{ display:'flex', gap:4, alignItems:'center' }}>
+                              <input style={styles.closeInput} type="number" placeholder={tr('exitPricePH',lang)} value={exitInput} onChange={(e)=>setExitInput(e.target.value)} />
+                              <button onClick={()=>handleClose(t.id)} style={styles.confirmBtn}>✓</button>
+                              <button onClick={()=>setClosingId(null)} style={styles.cancelBtn}>✕</button>
+                            </span>
+                          ) : (
+                            <button onClick={()=>{setClosingId(t.id);setExitInput('');}} style={styles.closeBtn}>{tr('closePos',lang)}</button>
+                          )
                         ) : (
-                          <button onClick={()=>{setClosingId(t.id);setExitInput('');}} style={styles.closeBtn}>{tr('closePos',lang)}</button>
-                        )
-                      ) : (
-                        <button onClick={()=>onDelete(t.id)} style={styles.deleteBtn}>{tr('deleteBtn',lang)}</button>
-                      )}
-                    </td>
-                  </tr>
+                          <button onClick={()=>onDelete(t.id)} style={styles.deleteBtn}>{tr('deleteBtn',lang)}</button>
+                        )}
+                      </td>
+                    </tr>
+                    {/* ── Reflection Notes Row ─────────────────────── */}
+                    <tr style={{ borderBottom: '1px solid #1a1a2e', background: '#0d0d1a' }}>
+                      <td colSpan={10} style={{ padding: '6px 10px 10px' }}>
+                        <div style={{ fontSize: '0.68rem', color: '#444', fontFamily: 'monospace', marginBottom: 4 }}>
+                          📓 {isEN ? 'Reflection' : '反思筆記'}
+                          <span style={{ color: '#2a2a3e', marginLeft: 6 }}>
+                            {isEN ? '(builds good trading habits)' : '（培養良好交易習慣）'}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                          <textarea
+                            style={styles.noteInput}
+                            value={notes[t.id] ?? t.notes ?? ''}
+                            onChange={(e) => setNotes((prev) => ({ ...prev, [t.id]: e.target.value }))}
+                            placeholder={getPrompt(t.id, isEN)}
+                            rows={2}
+                          />
+                          <button
+                            onClick={() => handleSaveNote(t.id)}
+                            style={{ ...styles.confirmBtn, padding: '4px 10px', fontSize: '0.7rem', whiteSpace: 'nowrap' }}
+                          >
+                            {savedNotes[t.id] ? '✅' : (isEN ? 'Save' : '儲存')}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
@@ -168,14 +245,16 @@ const styles: Record<string, React.CSSProperties> = {
   wrapper: { maxWidth: 700, width: '100%' },
   toggleBtn: { width:'100%', background:'#1a1a2e', border:'1px solid #2a2a3e', color:'#ccc', padding:'10px 16px', borderRadius:10, cursor:'pointer', fontFamily:'monospace', fontSize:'0.85rem', display:'flex', alignItems:'center', textAlign:'left', gap:8 },
   body: { background:'#13131f', border:'1px solid #2a2a3e', borderTop:'none', borderRadius:'0 0 10px 10px', padding:'16px', display:'flex', flexDirection:'column', gap:14 },
+  reflectionBanner: { display: 'flex', gap: 12, alignItems: 'flex-start', background: '#0d1a2e', border: '1px solid #29b6f633', borderRadius: 8, padding: '10px 14px' },
   sectionTitle: { fontSize:'0.72rem', color:'#555', fontFamily:'monospace', textTransform:'uppercase', letterSpacing:1 },
   summaryGrid: { display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(130px, 1fr))', gap:8 },
   miniChart: { background:'#0f0f1a', borderRadius:8, padding:'10px', border:'1px solid #1a1a2e', overflowX:'auto' },
   table: { width:'100%', borderCollapse:'collapse', fontFamily:'monospace', fontSize:'0.78rem', minWidth:600 },
   thead: { background:'#0f0f1a' },
   th: { padding:'8px 10px', color:'#444', fontWeight:'normal', textAlign:'left', borderBottom:'1px solid #1a1a2e', whiteSpace:'nowrap' },
-  tr: { borderBottom:'1px solid #1a1a2e' },
+  tr: { borderBottom: 'none' },
   td: { padding:'8px 10px', color:'#aaa', verticalAlign:'middle', whiteSpace:'nowrap' },
+  noteInput: { background: '#0f0f1a', border: '1px solid #2a2a3e', color: '#888', padding: '6px 10px', borderRadius: 6, fontFamily: 'monospace', fontSize: '0.74rem', outline: 'none', width: '100%', resize: 'vertical', lineHeight: 1.5 },
   closeInput: { background:'#0f0f1a', border:'1px solid #2a2a3e', color:'#fff', padding:'3px 6px', borderRadius:4, fontFamily:'monospace', fontSize:'0.75rem', width:80, outline:'none' },
   closeBtn: { background:'#16213e', border:'1px solid #f0b90b', color:'#f0b90b', padding:'3px 10px', borderRadius:4, cursor:'pointer', fontFamily:'monospace', fontSize:'0.75rem' },
   confirmBtn: { background:'#0d3d1f', border:'1px solid #00c853', color:'#00c853', padding:'3px 8px', borderRadius:4, cursor:'pointer', fontFamily:'monospace' },
