@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SignalEvent, MAPoint } from '../types/binance';
+import { SignalEvent, MAPoint, Candle } from '../types/binance';
 import { Lang, tr } from '../i18n';
 
 interface Props {
@@ -8,6 +8,7 @@ interface Props {
   ma60: MAPoint[];
   lastPrice: number | null;
   lang: Lang;
+  candles?: Candle[];
 }
 
 function Tip({ text, children }: { text: string; children: React.ReactNode }) {
@@ -32,7 +33,7 @@ function StatCard({ label, value, color, tip, sub }: { label: string; value: str
   return (
     <div style={statStyles.card}>
       <div style={statStyles.label}>
-        {tip ? <Tip text={tip}><span>{label} <span style={{ opacity: 0.5, fontSize: '0.65rem' }}>ⓘ</span></span></Tip> : label}
+        {tip ? <Tip text={tip}><span>{label} <span style={{ opacity: 0.5, fontSize: '0.65rem' }}>ⓘ</span></Tip> : label}
       </div>
       <div style={{ ...statStyles.value, color: color ?? '#fff' }}>{value}</div>
       {sub && <div style={statStyles.sub}>{sub}</div>}
@@ -40,14 +41,112 @@ function StatCard({ label, value, color, tip, sub }: { label: string; value: str
   );
 }
 
+// ─── Candle Comparison Detail ─────────────────────────────────────────────────
+function CandleCompare({
+  prevCandle, latestCandle, mode, isEN,
+}: {
+  prevCandle: Candle | null;
+  latestCandle: Candle | null;
+  mode: 'high' | 'low';
+  isEN: boolean;
+}) {
+  if (!prevCandle || !latestCandle) {
+    return (
+      <div style={{ fontSize: '0.78rem', color: '#555', fontStyle: 'italic' }}>
+        {isEN ? 'Waiting for candle data…' : '等待K線資料載入…'}
+      </div>
+    );
+  }
+
+  const isHighMode = mode === 'high';
+  const prevVal  = isHighMode ? prevCandle.high  : prevCandle.low;
+  const currVal  = isHighMode ? latestCandle.high : latestCandle.low;
+  const achieved = isHighMode ? currVal > prevVal : currVal < prevVal;
+  const diff     = Math.abs(currVal - prevVal);
+  const color    = isHighMode ? '#00c853' : '#ff1744';
+
+  const prevLabel  = isEN ? 'Previous candle' : '上一根K線';
+  const currLabel  = isEN ? 'Current candle'  : '本根K線';
+  const fieldLabel = isHighMode ? (isEN ? 'High' : '高點mpty') : (isEN ? 'Low' : '低點');
+  const needLabel  = isHighMode
+    ? (isEN ? '← needs to be HIGHER than previous' : '← 需高於上一根')
+    : (isEN ? '← needs to be LOWER than previous'  : '← 需低於上一根');
+
+  const statusLine = achieved
+    ? (isHighMode
+        ? (isEN ? `✅ New High! +$${diff.toFixed(2)} above previous` : `✅ 創新高！高出 $${diff.toFixed(2)}`)
+        : (isEN ? `✅ New Low! -$${diff.toFixed(2)} below previous`  : `✅ 創新低！低出 $${diff.toFixed(2)}`))
+    : (isHighMode
+        ? (isEN ? `❌ $${diff.toFixed(2)} short of a new high` : `❌ 還差 $${diff.toFixed(2)} 才創新高`)
+        : (isEN ? `❌ $${diff.toFixed(2)} above previous low (not a new low yet)` : `❌ 還高出 $${diff.toFixed(2)}，尚未創新低`));
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Header */}
+      <div style={{ fontSize: '0.75rem', color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+        {isEN ? `📊 Candle Comparison (${isHighMode ? 'High' : 'Low'} Point):` : `📊 K線比較（${isHighMode ? '高點' : '低點'}）：`}
+      </div>
+
+      {/* Comparison rows */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {/* Previous candle */}
+        <div style={{ background: '#1a1a2e', border: '1px solid #2a2a3e', borderRadius: 8, padding: '8px 10px' }}>
+          <div style={{ fontSize: '0.65rem', color: '#555', marginBottom: 3 }}>{prevLabel}</div>
+          <div style={{ fontSize: '0.72rem', color: '#888', marginBottom: 2 }}>{fieldLabel}:</div>
+          <div style={{ fontSize: '0.92rem', fontWeight: 'bold', color: '#aaa', fontFamily: 'monospace' }}>
+            ${prevVal.toFixed(2)}
+          </div>
+        </div>
+
+        {/* Current candle */}
+        <div style={{
+          background: achieved ? color + '18' : '#1a1a2e',
+          border: `1px solid ${achieved ? color + '55' : '#2a2a3e'}`,
+          borderRadius: 8, padding: '8px 10px',
+        }}>
+          <div style={{ fontSize: '0.65rem', color: achieved ? color : '#555', marginBottom: 3 }}>{currLabel}</div>
+          <div style={{ fontSize: '0.72rem', color: '#888', marginBottom: 2 }}>{fieldLabel}:</div>
+          <div style={{ fontSize: '0.92rem', fontWeight: 'bold', color: achieved ? color : '#aaa', fontFamily: 'monospace' }}>
+            ${currVal.toFixed(2)}
+          </div>
+          <div style={{ fontSize: '0.62rem', color: '#555', marginTop: 3, lineHeight: 1.4 }}>{needLabel}</div>
+        </div>
+      </div>
+
+      {/* Status line */}
+      <div style={{
+        background: achieved ? color + '15' : '#0f0f1a',
+        border: `1px solid ${achieved ? color + '44' : '#1a1a2e'}`,
+        borderRadius: 6, padding: '7px 10px',
+        fontSize: '0.8rem', color: achieved ? color : '#888', fontWeight: 'bold',
+      }}>
+        {statusLine}
+      </div>
+
+      {/* Mountain climber analogy */}
+      <div style={{ background: '#16161e', border: '1px solid #2a2a3e', borderRadius: 7, padding: '8px 10px', fontSize: '0.75rem', color: '#666', lineHeight: 1.6 }}>
+        {isHighMode
+          ? (isEN
+              ? `🏔️ Think of it like a mountain climber. We only buy when the climber reaches a new peak. Right now the climber is at $${currVal.toFixed(2)}, which is ${achieved ? 'higher than' : 'lower than'} the last peak $${prevVal.toFixed(2)}. ${achieved ? '🎉 New high confirmed!' : 'Not a new high yet.'}`
+              : `🏔️ 想像登山者。我們只在登山者到達新峰頂時才買入。目前登山者在 $${currVal.toFixed(2)}，${achieved ? '高於' : '低於'}上一峰 $${prevVal.toFixed(2)}。${achieved ? '🎉 已創新高！' : '尚未創新高。'}`) 
+          : (isEN
+              ? `🧗 Think of it like a diver going deeper. We only short when the diver reaches a new depth. Right now at $${currVal.toFixed(2)}, which is ${achieved ? 'lower than' : 'higher than'} the last depth $${prevVal.toFixed(2)}. ${achieved ? '🎉 New low confirmed!' : 'Not a new low yet.'}`
+              : `🧗 想像潛水員潛得更深。我們只在价格創新低點時才做空。目前 $${currVal.toFixed(2)}，${achieved ? '低於' : '高於'}上一個低點 $${prevVal.toFixed(2)}。${achieved ? '🎉 已創新低！' : '尚未創新低。'}`)}
+      </div>
+    </div>
+  );
+}
+
 // ─── Live Wait Checklist ───────────────────────────────────────────────────────
 function WaitCard({
-  lastPrice, latestMA20, latestMA60, isEN,
+  lastPrice, latestMA20, latestMA60, isEN, latestCandle, prevCandle,
 }: {
   lastPrice: number | null;
   latestMA20: number | null;
   latestMA60: number | null;
   isEN: boolean;
+  latestCandle: Candle | null;
+  prevCandle: Candle | null;
 }) {
   if (!lastPrice || !latestMA20 || !latestMA60) {
     return (
@@ -61,11 +160,10 @@ function WaitCard({
   const PROX = 0.005; // 0.5%
 
   // ── LONG check ──
-  const longZoneLow  = latestMA20 * (1 - PROX);   // e.g. MA20 × 0.995
-  const longZoneHigh = latestMA20 * (1 + PROX);   // e.g. MA20 × 1.005
+  const longZoneLow  = latestMA20 * (1 - PROX);
+  const longZoneHigh = latestMA20 * (1 + PROX);
   const nearMA20     = Math.abs(lastPrice - latestMA20) / latestMA20 < PROX;
   const aboveMA20    = lastPrice > latestMA20;
-  // proximity 0→1 (1 = right on MA20)
   const longProx     = Math.max(0, 1 - Math.abs(lastPrice - latestMA20) / latestMA20 / PROX);
 
   // ── SHORT check ──
@@ -79,9 +177,9 @@ function WaitCard({
   const distMA20 = Math.abs(lastPrice - latestMA20);
   const distMA60 = Math.abs(lastPrice - latestMA60);
 
-  // Which scenario is closer?
-  const longReady  = aboveMA20 && nearMA20;
-  const shortReady = belowMA60 && nearMA60;
+  // ── Live new-high / new-low flags ──
+  const newHighMade = latestCandle && prevCandle ? latestCandle.high > prevCandle.high : false;
+  const newLowMade  = latestCandle && prevCandle ? latestCandle.low  < prevCandle.low  : false;
 
   return (
     <div style={wS.card}>
@@ -100,11 +198,11 @@ function WaitCard({
 
       {/* ── Analogy ── */}
       <div style={wS.analogy}>
-        <span style={{ fontSize: '1.1rem' }}>🚉</span>
+        <span style={{ fontSize: '1.1rem' }}>🙉</span>
         <span style={{ fontSize: '0.8rem', color: '#888', lineHeight: 1.6 }}>
           {isEN
-            ? 'Think of MA20 as a train platform. The signal fires only when the price "arrives at the platform" (within 0.5%) AND a new passenger boards (price makes a new high). Right now the train is still en route.'
-            : '把 MA20 想像成火車月台。訊號只在價格「抵達月台」（0.5%範圍內）且 同時 有新乘客上車（創新高）時才觸發。現在火車仍在途中。'}
+            ? `Think of MA20 as a train platform (currently at $${latestMA20.toFixed(2)}). The signal fires only when the price "arrives at the platform" (within 0.5%) AND a new passenger boards (price makes a new high). Right now the train is still en route.`
+            : `把 MA20 想像火車月台（目前在 $${latestMA20.toFixed(2)}）。訊號只在價格「抵達月台」（0.5%範圍內）且 同時 有新乘客上車（創新高）時才觸發。現在火車仍在途中。`}
         </span>
       </div>
 
@@ -112,7 +210,7 @@ function WaitCard({
 
       {/* ── LONG checklist ── */}
       <ConditionBlock
-        title={isEN ? '🟢 BUY (Long) Signal — needs ALL 3:' : '🟢 買入（做多）訊號 — 需同時滿足全部3項：'}
+        title={isEN ? '🟢 BUY (Long) Signal — needs ALL 3:' : '🟢 買入（做多）訊號 — 需同時滿足共3項：'}
         color="#00c853"
       >
         <CondRow
@@ -144,14 +242,22 @@ function WaitCard({
             : `觸發區：$${longZoneLow.toFixed(2)} ← MA20 $${latestMA20.toFixed(2)} → $${longZoneHigh.toFixed(2)}`}
         />
         <CondRow
-          ok={false}
-          pending
+          ok={newHighMade}
+          pending={!latestCandle || !prevCandle}
           label={isEN ? 'Current candle makes a NEW HIGH vs previous candle' : '本根K線創出比上一根更高的新高'}
           detail={isEN
-            ? 'Checked live on each new candle close. Like a new peak being formed — momentum confirmation.'
-            : '每根K線收盤時即時檢查。就像形成一個新高峰——動能確認信號。'}
+            ? (newHighMade ? '✅ New high confirmed on this candle.' : '❌ Current candle high has not yet exceeded the previous candle high.')
+            : (newHighMade ? '✅ 本根K線已創新高。' : '❌ 本根K線高點尚未超過上一根。')}
           tip={isEN ? 'Prevents false signals on sideways price.' : '防止橫盤時產生假訊號。'}
           color="#00c853"
+          extraContent={
+            <CandleCompare
+              prevCandle={prevCandle}
+              latestCandle={latestCandle}
+              mode="high"
+              isEN={isEN}
+            />
+          }
         />
       </ConditionBlock>
 
@@ -159,7 +265,7 @@ function WaitCard({
 
       {/* ── SHORT checklist ── */}
       <ConditionBlock
-        title={isEN ? '🔴 SELL (Short) Signal — needs ALL 3:' : '🔴 賣出（做空）訊號 — 需同時滿足全部3項：'}
+        title={isEN ? '🔴 SELL (Short) Signal — needs ALL 3:' : '🔴 賣出（做空）訊號 — 需同時滿足共3項：'}
         color="#ff1744"
       >
         <CondRow
@@ -191,14 +297,22 @@ function WaitCard({
             : `觸發區：$${shortZoneLow.toFixed(2)} ← MA60 $${latestMA60.toFixed(2)} → $${shortZoneHigh.toFixed(2)}`}
         />
         <CondRow
-          ok={false}
-          pending
+          ok={newLowMade}
+          pending={!latestCandle || !prevCandle}
           label={isEN ? 'Current candle makes a NEW LOW vs previous candle' : '本根K線創出比上一根更低的新低'}
           detail={isEN
-            ? 'Checked live on each new candle close. Confirms the downward momentum.'
-            : '每根K線收盤時即時檢查。確認下行動能。'}
+            ? (newLowMade ? '✅ New low confirmed on this candle.' : '❌ Current candle low has not yet broken below the previous candle low.')
+            : (newLowMade ? '✅ 本根K線已創新低。' : '❌ 本根K線低點尚未突破上一根低點。')}
           tip={isEN ? 'Prevents false signals on sideways price.' : '防止橫盤時產生假訊號。'}
           color="#ff1744"
+          extraContent={
+            <CandleCompare
+              prevCandle={prevCandle}
+              latestCandle={latestCandle}
+              mode="low"
+              isEN={isEN}
+            />
+          }
         />
       </ConditionBlock>
 
@@ -222,10 +336,11 @@ function ConditionBlock({ title, color, children }: { title: string; color: stri
 }
 
 function CondRow({
-  ok, pending, label, detail, tip, color, progress, progressLabel,
+  ok, pending, label, detail, tip, color, progress, progressLabel, extraContent,
 }: {
   ok: boolean; pending?: boolean; label: string; detail: string; tip?: string; color: string;
   progress?: number; progressLabel?: string;
+  extraContent?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const icon = pending ? '⏱' : ok ? '✅' : '❌';
@@ -268,13 +383,16 @@ function CondRow({
               </div>
             </div>
           )}
+          {extraContent && (
+            <div style={{ marginTop: 6 }}>{extraContent}</div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// ─── Beginner Guide ────────────────────────────────────────────────────────────
+// ─── Beginner Guide ───────────────────────────────────────────────────
 function BeginnerGuide({ lang }: { lang: Lang }) {
   const [open, setOpen] = useState(false);
   const isEN = lang === 'EN';
@@ -301,22 +419,30 @@ function BeginnerGuide({ lang }: { lang: Lang }) {
               {isEN ? 'The live price right now, updated every 10 seconds. Like the price tag on a shelf.' : '即時市場價格，每10秒更新。就像貨架上的標價貼，隨時在變。'}
             </GuideItem>
             <GuideItem tag="MA20" tagColor="#29b6f6">
-              {isEN ? 'Average of last 20 candle closes — the market\'s "recent mood". Above it = bullish.' : '最近20根K線收盤均值——市場的「近期情緒」。現價在上 = 多頭。'}
+              {isEN ? 'Average of last 20 candle closes — the market\'s "recent mood". Above it = bullish.' : '最近20根K線收盤均値——市場的「近期情緒」。現價在上 = 多頭。'}
             </GuideItem>
             <GuideItem tag="MA60" tagColor="#ab47bc">
-              {isEN ? 'Average of last 60 candles — big-picture direction. Below it = bearish.' : '最近60根K線均值——大方向趨勢。現價在下 = 空頭。'}
+              {isEN ? 'Average of last 60 candles — big-picture direction. Below it = bearish.' : '最近60根K線均値——大方向趨勢。現價在下 = 空頭。'}
             </GuideItem>
             <GuideItem tag={isEN ? 'Trend' : '趨勢'} tagColor="#888">
               {isEN ? 'Bullish = price above MA20 (boat on water). Bearish = price below (boat sinking).' : '多頭 = 價格浮在MA20上（船在水面）。空頭 = 價格沉在線下（船沉水底）。'}
             </GuideItem>
           </Section>
 
+          <Section color="#888" title={isEN ? '📊 What is a candle (K-line)?' : '📊 K線是什麼？'}>
+            <GuideItem tag={isEN ? 'Candle / K-line' : 'K線 / 螺烛圖'} tagColor="#888">
+              {isEN
+                ? 'A candle = 1 price bar on the chart. On a 1H chart, each candle = 1 hour of trading. It shows the open, high, low, and close price for that period. The "new high" condition compares the highest price reached this candle vs. the previous candle.'
+                : 'K線 = 圖表上的一根價格樯。在一小時圖上，每根K線 = 1小時的交易。包含開盤、最高、最低和收盤價。「創新高」條件比較本根K線最高價與上一根K線最高價。'}
+            </GuideItem>
+          </Section>
+
           <Section color="#00c853" title={isEN ? '🚦 What triggers a signal?' : '🚦 什麼情況會觸發訊號？'}>
             <GuideItem tag={isEN ? '🟢 BUY' : '🟢 買入'} tagColor="#00c853">
-              {isEN ? 'Price is above MA20 + within 0.5% of MA20 + current candle makes a new high. All 3 together = green light.' : '現價在MA20上方 + 距MA20在0.5%以內 + 本根K線創新高。三個同時滿足 = 綠燈。'}
+              {isEN ? 'Price is above MA20 + within 0.5% of MA20 + current candle makes a new high. All 3 together = green light.' : '現價在MA20上方 + 距MA20偵0.5%以內 + 本根K線創新高。三個同時滿足 = 綠燈。'}
             </GuideItem>
             <GuideItem tag={isEN ? '🔴 SELL' : '🔴 賣出'} tagColor="#ff1744">
-              {isEN ? 'Price is below MA60 + within 0.5% of MA60 + current candle makes a new low. All 3 together = red light.' : '現價在MA60下方 + 距MA60在0.5%以內 + 本根K線創新低。三個同時滿足 = 紅燈。'}
+              {isEN ? 'Price is below MA60 + within 0.5% of MA60 + current candle makes a new low. All 3 together = red light.' : '現價在MA60下方 + 距MA60偵0.5%以內 + 本根K線創新低。三個同時滿足 = 紅燈。'}
             </GuideItem>
             <GuideItem tag={isEN ? '⏳ Waiting' : '⏳ 等待'} tagColor="#888">
               {isEN ? 'Not all 3 conditions are met yet. The checklist above shows exactly how far away each condition is in real dollars.' : '3個條件未同時滿足。上方的條件清單會實時顯示每個條件距離觸發還差多少美元。'}
@@ -330,7 +456,7 @@ function BeginnerGuide({ lang }: { lang: Lang }) {
             <GuideItem tag={isEN ? '🎯 Take Profit' : '🎯 止盈'} tagColor="#00c853">
               {isEN ? 'Target exit at +3% profit. You aim to earn 3× what you risk.' : '目標在+3%利潤離場。目標是賺取風險的3倍。'}
             </GuideItem>
-            <GuideItem tag={isEN ? '⚖️ R:R 3:1' : '⚖️ 盈虧比 3:1'} tagColor="#f0b90b">
+            <GuideItem tag={isEN ? '⚖️ R:R 3:1' : '⚖️ 盈蹧比 3:1'} tagColor="#f0b90b">
               {isEN ? 'For every $1 risked, target $3 profit. Even with only 40% wins, you\'re profitable long-term.' : '每冒$1風險，目標賺$3。即使只有40%勝率，長期仍盈利。'}
             </GuideItem>
           </Section>
@@ -362,12 +488,15 @@ function GuideItem({ tag, tagColor, children }: { tag: string; tagColor: string;
   );
 }
 
-// ─── Main Export ───────────────────────────────────────────────────────────────
-export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang }: Props) {
+// ─── Main Export ───────────────────────────────────────────────────
+export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang, candles }: Props) {
   const latestMA20 = ma20[ma20.length - 1]?.value ?? null;
   const latestMA60 = ma60[ma60.length - 1]?.value ?? null;
   const isEN = lang === 'EN';
   const isBull = lastPrice && latestMA20 ? lastPrice > latestMA20 : null;
+
+  const latestCandle = candles && candles.length >= 2 ? candles[candles.length - 1] : null;
+  const prevCandle   = candles && candles.length >= 2 ? candles[candles.length - 2] : null;
 
   return (
     <div style={styles.panel}>
@@ -383,17 +512,17 @@ export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang }: Pro
           tip={isEN ? 'Live market price, updates every 10 seconds.' : '即時市場價格，每10秒自動更新。'}
           sub={isEN ? 'Updates every 10s' : '每10秒更新'} />
         <StatCard label="MA20" value={`$${latestMA20?.toFixed(2) ?? '---'}`} color="#29b6f6"
-          tip={isEN ? 'Average of last 20 candles. Short-term trend. Price above = bullish.' : '最近20根K線均值，短期趨勢。現價在上 = 多頭。'}
+          tip={isEN ? 'Average of last 20 candles. Short-term trend. Price above = bullish.' : '最近20根K線均値，短期趨勢。現價在上 = 多頭。'}
           sub={isEN ? 'Short-term avg' : '短期均線'} />
         <StatCard label="MA60" value={`$${latestMA60?.toFixed(2) ?? '---'}`} color="#ab47bc"
-          tip={isEN ? 'Average of last 60 candles. Big-picture trend. Price below = bearish.' : '最近60根K線均值，長期趨勢。現價在下 = 空頭。'}
+          tip={isEN ? 'Average of last 60 candles. Big-picture trend. Price below = bearish.' : '最近60根K線均値，長期趨勢。現價在下 = 空頭。'}
           sub={isEN ? 'Long-term avg' : '長期均線'} />
         <StatCard
           label={isEN ? 'Trend' : '趨勢'}
           value={isBull === null ? '---' : isBull ? (isEN ? '⬆ Bullish' : '⬆ 多頭') : (isEN ? '⬇ Bearish' : '⬇ 空頭')}
           color={isBull === null ? '#888' : isBull ? '#00c853' : '#ff1744'}
           tip={isEN ? 'Bullish = price above MA20 (boat on water). Bearish = price below (boat sinking).' : '多頭 = 價格浮在MA20上如船在水面；空頭 = 沉在線下。'}
-          sub={isEN ? 'Price vs MA20' : '現價 vs MA20'} />
+          sub={isEN ? 'Above = Bullish / Below = Bearish' : '線上多頭 / 線下空頭'} />
       </div>
 
       {/* Signal or Wait */}
@@ -420,16 +549,23 @@ export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang }: Pro
                 tip={isEN ? 'Suggested entry price when signal triggered' : '訊號觸發時的建議入場價格'} />
               <LevelBadge icon="🛑" label={isEN ? 'Stop Loss' : '止蝕'}
                 value={`$${(signal.type === 'LONG' ? signal.price * 0.99 : signal.price * 1.01).toFixed(2)}`} color="#ff5252"
-                tip={isEN ? 'Exit here if trade goes wrong. Limits your loss to ~1%.' : '交易出錯時在此離場，損失限制在約1%。'} />
+                tip={isEN ? 'Exit here if trade goes wrong. Limits your loss to ~1%.' : '交易出錯時在此離場，損失限制在坧1%。'} />
               <LevelBadge icon="🎯" label={isEN ? 'Take Profit' : '止盈'}
                 value={`$${(signal.type === 'LONG' ? signal.price * 1.03 : signal.price * 0.97).toFixed(2)}`} color="#00c853"
                 tip={isEN ? 'Target exit. Profit = 3× stop loss distance.' : '目標離場。利潤 = 止蝕距離的3倍。'} />
-              <LevelBadge icon="⚖️" label={isEN ? 'R:R Ratio' : '盈虧比'} value="3 : 1" color="#f0b90b"
+              <LevelBadge icon="⚖️" label={isEN ? 'R:R Ratio' : '盈蹧比'} value="3 : 1" color="#f0b90b"
                 tip={isEN ? 'Risk $1 to make $3. Works long-term even at 40% win rate.' : '冒$1賺$3。即使40%勝率長期仍盈利。'} />
             </div>
           </div>
         ) : (
-          <WaitCard lastPrice={lastPrice} latestMA20={latestMA20} latestMA60={latestMA60} isEN={isEN} />
+          <WaitCard
+            lastPrice={lastPrice}
+            latestMA20={latestMA20}
+            latestMA60={latestMA60}
+            isEN={isEN}
+            latestCandle={latestCandle}
+            prevCandle={prevCandle}
+          />
         )}
       </div>
 
@@ -441,7 +577,7 @@ export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang }: Pro
         <div style={styles.rulesRow}>
           <RulePill num="1" text={isEN ? 'Above line → Buy' : '線上做多'} color="#00c853" />
           <RulePill num="2" text={isEN ? 'Wait for the line' : '到位才動'} color="#f0b90b" />
-          <RulePill num="3" text={isEN ? 'R:R = 3:1' : '盈虧比3:1'} color="#ab47bc" />
+          <RulePill num="3" text={isEN ? 'R:R = 3:1' : '盈蹧比3:1'} color="#ab47bc" />
         </div>
       </div>
     </div>
