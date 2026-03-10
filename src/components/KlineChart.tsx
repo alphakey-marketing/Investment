@@ -1,16 +1,5 @@
-import { useEffect, useRef } from 'react';
-import {
-  createChart,
-  IChartApi,
-  ISeriesApi,
-  CandlestickSeries,
-  LineSeries,
-  ColorType,
-  CrosshairMode,
-  CandlestickData,
-  LineData,
-  Time,
-} from 'lightweight-charts';
+import React, { useEffect, useRef } from 'react';
+import { createChart, ColorType, CrosshairMode } from 'lightweight-charts';
 import { Candle, MAPoint, SignalEvent } from '../types/binance';
 
 interface Props {
@@ -22,41 +11,37 @@ interface Props {
 
 export default function KlineChart({ candles, ma20, ma60, signal }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const ma20SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const ma60SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const chartRef = useRef<any>(null);
+  const candleSeriesRef = useRef<any>(null);
+  const ma20SeriesRef = useRef<any>(null);
+  const ma60SeriesRef = useRef<any>(null);
 
-  // Init chart once
+  // Init chart once on mount
   useEffect(() => {
     if (!containerRef.current) return;
 
     const chart = createChart(containerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: '#0f0f1a' },
-        textColor: '#888',
+        textColor: '#888888',
       },
       grid: {
         vertLines: { color: '#1a1a2e' },
         horzLines: { color: '#1a1a2e' },
       },
-      crosshair: {
-        mode: CrosshairMode.Normal,
-      },
-      rightPriceScale: {
-        borderColor: '#333',
-      },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: '#333333' },
       timeScale: {
-        borderColor: '#333',
+        borderColor: '#333333',
         timeVisible: true,
         secondsVisible: false,
       },
       width: containerRef.current.clientWidth,
-      height: 380,
+      height: 360,
     });
 
-    // Candlestick series
-    const candleSeries = chart.addSeries(CandlestickSeries, {
+    // v4 API: addCandlestickSeries / addLineSeries
+    const candleSeries = chart.addCandlestickSeries({
       upColor: '#00c853',
       downColor: '#ff1744',
       borderUpColor: '#00c853',
@@ -65,18 +50,20 @@ export default function KlineChart({ candles, ma20, ma60, signal }: Props) {
       wickDownColor: '#ff1744',
     });
 
-    // MA20 line - blue
-    const ma20Series = chart.addSeries(LineSeries, {
+    const ma20Series = chart.addLineSeries({
       color: '#2196f3',
       lineWidth: 2,
       title: 'MA20',
+      priceLineVisible: false,
+      lastValueVisible: true,
     });
 
-    // MA60 line - orange
-    const ma60Series = chart.addSeries(LineSeries, {
+    const ma60Series = chart.addLineSeries({
       color: '#ff9800',
       lineWidth: 2,
       title: 'MA60',
+      priceLineVisible: false,
+      lastValueVisible: true,
     });
 
     chartRef.current = chart;
@@ -84,7 +71,6 @@ export default function KlineChart({ candles, ma20, ma60, signal }: Props) {
     ma20SeriesRef.current = ma20Series;
     ma60SeriesRef.current = ma60Series;
 
-    // Responsive resize
     const handleResize = () => {
       if (containerRef.current) {
         chart.applyOptions({ width: containerRef.current.clientWidth });
@@ -95,54 +81,73 @@ export default function KlineChart({ candles, ma20, ma60, signal }: Props) {
     return () => {
       window.removeEventListener('resize', handleResize);
       chart.remove();
+      chartRef.current = null;
+      candleSeriesRef.current = null;
+      ma20SeriesRef.current = null;
+      ma60SeriesRef.current = null;
     };
   }, []);
 
-  // Update candle data
+  // Update candles
   useEffect(() => {
     if (!candleSeriesRef.current || candles.length === 0) return;
-    const data: CandlestickData[] = candles.map((c) => ({
-      time: c.time as Time,
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-    }));
-    candleSeriesRef.current.setData(data);
+    try {
+      candleSeriesRef.current.setData(
+        candles.map((c) => ({
+          time: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+        }))
+      );
+      // Fit all data in view
+      chartRef.current?.timeScale().fitContent();
+    } catch (e) {
+      console.error('Chart candle update error:', e);
+    }
   }, [candles]);
 
-  // Update MA20 line
+  // Update MA20
   useEffect(() => {
     if (!ma20SeriesRef.current || ma20.length === 0) return;
-    const data: LineData[] = ma20.map((p) => ({
-      time: p.time as Time,
-      value: p.value,
-    }));
-    ma20SeriesRef.current.setData(data);
+    try {
+      ma20SeriesRef.current.setData(ma20.map((p) => ({ time: p.time, value: p.value })));
+    } catch (e) {
+      console.error('MA20 update error:', e);
+    }
   }, [ma20]);
 
-  // Update MA60 line
+  // Update MA60
   useEffect(() => {
     if (!ma60SeriesRef.current || ma60.length === 0) return;
-    const data: LineData[] = ma60.map((p) => ({
-      time: p.time as Time,
-      value: p.value,
-    }));
-    ma60SeriesRef.current.setData(data);
+    try {
+      ma60SeriesRef.current.setData(ma60.map((p) => ({ time: p.time, value: p.value })));
+    } catch (e) {
+      console.error('MA60 update error:', e);
+    }
   }, [ma60]);
 
-  // Mark signal on chart with a marker
+  // Signal markers
   useEffect(() => {
-    if (!candleSeriesRef.current || !signal) return;
-    candleSeriesRef.current.setMarkers([
-      {
-        time: signal.time as Time,
-        position: signal.type === 'LONG' ? 'belowBar' : 'aboveBar',
-        color: signal.type === 'LONG' ? '#00c853' : '#ff1744',
-        shape: signal.type === 'LONG' ? 'arrowUp' : 'arrowDown',
-        text: signal.type === 'LONG' ? 'LONG 入場' : 'SHORT 入場',
-      },
-    ]);
+    if (!candleSeriesRef.current) return;
+    if (!signal) {
+      candleSeriesRef.current.setMarkers([]);
+      return;
+    }
+    try {
+      candleSeriesRef.current.setMarkers([
+        {
+          time: signal.time,
+          position: signal.type === 'LONG' ? 'belowBar' : 'aboveBar',
+          color: signal.type === 'LONG' ? '#00c853' : '#ff1744',
+          shape: signal.type === 'LONG' ? 'arrowUp' : 'arrowDown',
+          text: signal.type === 'LONG' ? '入場' : '入場',
+        },
+      ]);
+    } catch (e) {
+      console.error('Marker error:', e);
+    }
   }, [signal]);
 
   return (
@@ -150,32 +155,31 @@ export default function KlineChart({ candles, ma20, ma60, signal }: Props) {
       <div style={styles.header}>
         <span style={styles.title}>📉 XAUUSDT 1H K線圖</span>
         <div style={styles.legend}>
-          <span style={styles.legendItem}>
-            <span style={{ ...styles.dot, background: '#00c853' }} />陰線
-          </span>
-          <span style={styles.legendItem}>
-            <span style={{ ...styles.dot, background: '#ff1744' }} />陰線
-          </span>
-          <span style={styles.legendItem}>
-            <span style={{ ...styles.dot, background: '#2196f3' }} />MA20
-          </span>
-          <span style={styles.legendItem}>
-            <span style={{ ...styles.dot, background: '#ff9800' }} />MA60
-          </span>
+          <LegendDot color="#00c853" label="陽線" />
+          <LegendDot color="#ff1744" label="陰線" />
+          <LegendDot color="#2196f3" label="MA20" />
+          <LegendDot color="#ff9800" label="MA60" />
           {signal && (
-            <span style={styles.legendItem}>
-              <span style={{ color: signal.type === 'LONG' ? '#00c853' : '#ff1744' }}>
-                {signal.type === 'LONG' ? '▲ LONG' : '▼ SHORT'}
-              </span>
+            <span style={{ fontSize: '0.72rem', color: signal.type === 'LONG' ? '#00c853' : '#ff1744', fontFamily: 'monospace' }}>
+              {signal.type === 'LONG' ? '▲ LONG' : '▼ SHORT'}
             </span>
           )}
         </div>
       </div>
-      <div ref={containerRef} style={styles.chart} />
+      <div ref={containerRef} />
       <div style={styles.hint}>
-        👉 拖動可左右滾動 ・ 滚輪可縮放 ・ 双擊可高亮 K線
+        👉 拖動滾動 K線 · 滚輪縮放 · 鐄色線左方=MA20(MA60)最新價
       </div>
     </div>
+  );
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: '#888', fontFamily: 'monospace' }}>
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
+      {label}
+    </span>
   );
 }
 
@@ -192,43 +196,12 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '12px 16px',
+    padding: '10px 16px',
     borderBottom: '1px solid #1a1a2e',
     flexWrap: 'wrap',
     gap: 8,
   },
-  title: {
-    color: '#fff',
-    fontFamily: 'monospace',
-    fontSize: '0.9rem',
-  },
-  legend: {
-    display: 'flex',
-    gap: 12,
-    flexWrap: 'wrap',
-  },
-  legendItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-    fontSize: '0.72rem',
-    color: '#888',
-    fontFamily: 'monospace',
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    display: 'inline-block',
-  },
-  chart: {
-    width: '100%',
-  },
-  hint: {
-    padding: '6px 16px',
-    fontSize: '0.7rem',
-    color: '#333',
-    fontFamily: 'monospace',
-    borderTop: '1px solid #1a1a2e',
-  },
+  title: { color: '#fff', fontFamily: 'monospace', fontSize: '0.88rem' },
+  legend: { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' },
+  hint: { padding: '5px 16px', fontSize: '0.68rem', color: '#2a2a3e', fontFamily: 'monospace', borderTop: '1px solid #1a1a2e' },
 };
