@@ -1,13 +1,24 @@
-## Running React on Replit
+# 📈 K均交易法 Investment Signal App
 
-[React](https://reactjs.org/) is a popular JavaScript library for building user interfaces.
+Real-time **XAUUSDT (Gold)** trading signal app based on **K均交易法**.
 
-[Vite](https://vitejs.dev/) is a blazing fast frontend build tool that includes features like Hot Module Reloading (HMR), optimized builds, and TypeScript support out of the box.
+## Strategy Rules
+- 線上多，線下空 (Above MA = bullish bias)
+- 到位就動，不到位不動 (Only act at MA)
+- 3:1 profit-to-loss ratio
 
-Using the two in conjunction is one of the fastest ways to build a web app.
+## Tech Stack
+Vite 4 + React 18 + TypeScript 5 + Binance Futures API
 
-### Getting Started
-- Hit run
-- Edit [App.tsx](#src/App.tsx) and watch it live update!
+## Sprint Roadmap
+- [x] Sprint 1: Binance API + WebSocket + MA + Signal Panel
+- [ ] Sprint 2: Lightweight Charts K-line visual
+- [ ] Sprint 3: Full Dashboard + interval selector
+- [ ] Sprint 4: Telegram alerts + settings
+- [ ] Sprint 5: Backtest + Vercel deploy
 
-By default, Replit runs the `dev` script, but you can configure it by changing the `run` field in the [configuration file](#.replit). Here are the vite docs for [serving production websites](https://vitejs.dev/guide/build.html)
+## Run Locally
+```bash
+npm install
+npm run dev
+```

@@ -1,2 +1,10 @@
-main {
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+body {
+  background: #0f0f1a;
+  color: #fff;
+  font-family: 'Courier New', monospace;
 }
