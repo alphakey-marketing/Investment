@@ -1,17 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Candle, Interval } from '../types/binance';
 
-// Use REST API polling instead of WebSocket for Replit compatibility
-// Binance Futures REST is CORS-friendly; WSS is often blocked in sandboxed envs
-const SYMBOL = 'XAUUSDT';
-const POLL_INTERVAL_MS = 10000; // refresh every 10 seconds
+const POLL_INTERVAL_MS = 10000;
 
-// Try Futures API first, fallback to Spot API (XAUUSDT available on both)
 const ENDPOINTS = [
-  (interval: string, limit: number) =>
-    `https://fapi.binance.com/fapi/v1/klines?symbol=${SYMBOL}&interval=${interval}&limit=${limit}`,
-  (interval: string, limit: number) =>
-    `https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${interval}&limit=${limit}`,
+  (symbol: string, interval: string, limit: number) =>
+    `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
+  (symbol: string, interval: string, limit: number) =>
+    `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
 ];
 
 function parseRawKline(raw: (string | number)[]): Candle {
@@ -25,22 +21,19 @@ function parseRawKline(raw: (string | number)[]): Candle {
   };
 }
 
-export function useBinanceKlines(interval: Interval = '1h', limit = 100) {
+export function useBinanceKlines(interval: Interval = '1h', limit = 100, symbol = 'XAUUSDT') {
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastPrice, setLastPrice] = useState<number | null>(null);
-  const [connectionMode, setConnectionMode] = useState<'polling' | 'ws'>('polling');
   const endpointIndexRef = useRef(0);
 
   const fetchKlines = useCallback(async () => {
     let lastErr: Error | null = null;
-
-    // Try each endpoint in order
     for (let i = 0; i < ENDPOINTS.length; i++) {
       const idx = (endpointIndexRef.current + i) % ENDPOINTS.length;
       try {
-        const url = ENDPOINTS[idx](interval, limit);
+        const url = ENDPOINTS[idx](symbol, interval, limit);
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: (string | number)[][] = await res.json();
@@ -49,31 +42,23 @@ export function useBinanceKlines(interval: Interval = '1h', limit = 100) {
         setLastPrice(parsed[parsed.length - 1]?.close ?? null);
         setError(null);
         setLoading(false);
-        endpointIndexRef.current = idx; // remember working endpoint
+        endpointIndexRef.current = idx;
         return;
       } catch (err) {
         lastErr = err instanceof Error ? err : new Error('Fetch failed');
       }
     }
-
-    // All endpoints failed
-    setError(`無法連接Binance API: ${lastErr?.message ?? 'Unknown error'}`);
+    setError(`無法連接Binance API: ${lastErr?.message}`);
     setLoading(false);
-  }, [interval, limit]);
+  }, [symbol, interval, limit]);
 
-  // Initial fetch + polling every 10s
   useEffect(() => {
     setLoading(true);
+    setCandles([]);
     fetchKlines();
-
-    const timer = setInterval(() => {
-      fetchKlines();
-    }, POLL_INTERVAL_MS);
-
-    setConnectionMode('polling');
-
+    const timer = setInterval(fetchKlines, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [fetchKlines]);
 
-  return { candles, loading, error, lastPrice, connectionMode, refetch: fetchKlines };
+  return { candles, loading, error, lastPrice, refetch: fetchKlines };
 }

@@ -1,19 +1,30 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
 import { useBinanceKlines } from './hooks/useBinanceKlines';
+import { useSignalHistory } from './hooks/useSignalHistory';
 import { calculateSMA } from './utils/ma';
 import { detectSignal } from './utils/signal';
-import SignalPanel from './components/SignalPanel';
+import ControlBar from './components/ControlBar';
 import KlineChart from './components/KlineChart';
+import SignalPanel from './components/SignalPanel';
+import SignalHistory from './components/SignalHistory';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { Interval } from './types/binance';
 import './App.css';
 
 export default function App() {
-  const { candles, loading, error, lastPrice } = useBinanceKlines('1h', 100);
-  const ma20 = calculateSMA(candles, 20);
-  const ma60 = calculateSMA(candles, 60);
-  const signal = detectSignal(candles);
+  const [symbol, setSymbol] = useState('XAUUSDT');
+  const [interval, setInterval] = useState<Interval>('1h');
+  const [ma1Period, setMa1Period] = useState(20);
+  const [ma2Period, setMa2Period] = useState(60);
 
+  const { candles, loading, error, lastPrice } = useBinanceKlines(interval, 100, symbol);
+  const ma20 = calculateSMA(candles, ma1Period);
+  const ma60 = calculateSMA(candles, ma2Period);
+  const signal = detectSignal(candles, ma1Period, ma2Period);
+  const { history, clearHistory } = useSignalHistory(signal);
+
+  // Toast + browser notification
   useEffect(() => {
     if (!signal) return;
     const isLong = signal.type === 'LONG';
@@ -28,7 +39,7 @@ export default function App() {
       duration: 10000,
     });
     if (Notification.permission === 'granted') {
-      new Notification(`KMA ${signal.type} - XAUUSDT 黃金`, { body: signal.message });
+      new Notification(`KMA ${signal.type} - ${symbol}`, { body: signal.message });
     }
   }, [signal?.time]);
 
@@ -36,40 +47,69 @@ export default function App() {
     if (Notification.permission === 'default') Notification.requestPermission();
   }, []);
 
-  if (loading) return (
-    <main style={styles.main}>
-      <div style={styles.status}>⏳ 載入 XAUUSDT K線數據中...</div>
-    </main>
-  );
-
-  if (error) return (
-    <main style={styles.main}>
-      <div style={{ ...styles.status, color: '#ff1744' }}>❌ {error}</div>
-    </main>
-  );
+  const symbolLabel = symbol === 'XAUUSDT' ? '💥 黃金' : symbol === 'BTCUSDT' ? '₿ BTC' : 'Ξ ETH';
 
   return (
     <main style={styles.main}>
       <Toaster position="top-right" />
+
+      {/* Header */}
       <div style={styles.headerRow}>
-        <h1 style={styles.header}>📈 K均交易法 · XAUUSDT 黃金</h1>
-        <span style={styles.liveBadge}>📡 即時更新</span>
+        <div>
+          <h1 style={styles.header}>📈 K均交易法</h1>
+          <div style={styles.subHeader}>{symbolLabel} · {interval.toUpperCase()} · MA{ma1Period}/MA{ma2Period}</div>
+        </div>
+        <span style={styles.liveBadge}>📡 即時</span>
       </div>
 
-      {/* K-line Chart wrapped in ErrorBoundary */}
-      <ErrorBoundary fallback="K線圖載入失敗">
-        <KlineChart candles={candles} ma20={ma20} ma60={ma60} signal={signal} />
-      </ErrorBoundary>
+      {/* Control Bar */}
+      <ControlBar
+        symbol={symbol}
+        interval={interval}
+        ma1Period={ma1Period}
+        ma2Period={ma2Period}
+        onSymbolChange={setSymbol}
+        onIntervalChange={setInterval}
+        onMa1Change={setMa1Period}
+        onMa2Change={setMa2Period}
+      />
+
+      {/* Loading / Error */}
+      {loading && (
+        <div style={styles.status}>⏳ 載入 {symbol} K線數據中...</div>
+      )}
+      {error && !loading && (
+        <div style={{ ...styles.status, color: '#ff1744' }}>❌ {error}</div>
+      )}
+
+      {/* K-line Chart */}
+      {!loading && !error && (
+        <ErrorBoundary fallback="K線圖載入失敗">
+          <KlineChart candles={candles} ma20={ma20} ma60={ma60} signal={signal} />
+        </ErrorBoundary>
+      )}
 
       {/* Signal Panel */}
-      <ErrorBoundary fallback="訊號面板載入失敗">
-        <SignalPanel signal={signal} ma20={ma20} ma60={ma60} lastPrice={lastPrice} />
-      </ErrorBoundary>
+      {!loading && !error && (
+        <ErrorBoundary fallback="訊號面板載入失敗">
+          <SignalPanel signal={signal} ma20={ma20} ma60={ma60} lastPrice={lastPrice} />
+        </ErrorBoundary>
+      )}
+
+      {/* Signal History */}
+      {history.length > 0 && (
+        <div style={{ maxWidth: 700, width: '100%' }}>
+          <SignalHistory history={history} />
+          <button onClick={clearHistory} style={styles.clearBtn}>
+            🗑 清除記錄
+          </button>
+        </div>
+      )}
 
       <p style={styles.footer}>
-        📡 {candles.length} 根K線 · 1小時圖 · 每10秒更新
+        📡 {candles.length} 根K線 · 每10秒更新 · 訊號記錄儲存於本機
       </p>
-      <p style={{ ...styles.footer, color: '#222' }}>
+      <p style={{ ...styles.footer, color: '#1a1a2e' }}>
         ⚠️ 僅供參考，非投資建議。投資有風險。
       </p>
     </main>
@@ -83,22 +123,27 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: '20px 16px',
-    gap: 14,
+    padding: '16px 12px',
+    gap: 12,
   },
   headerRow: {
     display: 'flex',
-    alignItems: 'center',
-    gap: 12,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     width: '100%',
     maxWidth: 700,
-    justifyContent: 'space-between',
   },
   header: {
     color: '#f0b90b',
     fontFamily: 'monospace',
     fontSize: '1.15rem',
     margin: 0,
+  },
+  subHeader: {
+    color: '#555',
+    fontFamily: 'monospace',
+    fontSize: '0.75rem',
+    marginTop: 3,
   },
   liveBadge: {
     background: '#0d3d1f',
@@ -108,15 +153,28 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 20,
     fontSize: '0.7rem',
     fontFamily: 'monospace',
+    marginTop: 4,
   },
   status: {
-    color: '#fff',
+    color: '#888',
     fontFamily: 'monospace',
-    fontSize: '1rem',
+    fontSize: '0.9rem',
+    maxWidth: 700,
+    width: '100%',
+  },
+  clearBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#333',
+    fontFamily: 'monospace',
+    fontSize: '0.72rem',
+    cursor: 'pointer',
+    marginTop: 6,
+    padding: '2px 6px',
   },
   footer: {
     color: '#2a2a3e',
-    fontSize: '0.73rem',
+    fontSize: '0.72rem',
     fontFamily: 'monospace',
     textAlign: 'center',
     margin: 0,
