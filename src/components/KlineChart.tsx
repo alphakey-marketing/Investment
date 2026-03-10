@@ -1,20 +1,24 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, CrosshairMode } from 'lightweight-charts';
 import { Candle, MAPoint, SignalEvent } from '../types/binance';
+import { Lang } from '../i18n';
 
 interface Props {
   candles: Candle[];
   ma20: MAPoint[];
   ma60: MAPoint[];
   signal: SignalEvent | null;
+  lang?: Lang;
 }
 
-export default function KlineChart({ candles, ma20, ma60, signal }: Props) {
+export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH' }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<any>(null);
   const candleSeriesRef = useRef<any>(null);
   const ma20SeriesRef = useRef<any>(null);
   const ma60SeriesRef = useRef<any>(null);
+  const [showGuide, setShowGuide] = useState(false);
+  const isEN = lang === 'EN';
 
   // Init chart once on mount
   useEffect(() => {
@@ -40,7 +44,6 @@ export default function KlineChart({ candles, ma20, ma60, signal }: Props) {
       height: 360,
     });
 
-    // v4 API: addCandlestickSeries / addLineSeries
     const candleSeries = chart.addCandlestickSeries({
       upColor: '#00c853',
       downColor: '#ff1744',
@@ -88,120 +91,146 @@ export default function KlineChart({ candles, ma20, ma60, signal }: Props) {
     };
   }, []);
 
-  // Update candles
   useEffect(() => {
     if (!candleSeriesRef.current || candles.length === 0) return;
     try {
       candleSeriesRef.current.setData(
-        candles.map((c) => ({
-          time: c.time,
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-        }))
+        candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }))
       );
-      // Fit all data in view
       chartRef.current?.timeScale().fitContent();
-    } catch (e) {
-      console.error('Chart candle update error:', e);
-    }
+    } catch (e) { console.error('Chart candle update error:', e); }
   }, [candles]);
 
-  // Update MA20
   useEffect(() => {
     if (!ma20SeriesRef.current || ma20.length === 0) return;
-    try {
-      ma20SeriesRef.current.setData(ma20.map((p) => ({ time: p.time, value: p.value })));
-    } catch (e) {
-      console.error('MA20 update error:', e);
-    }
+    try { ma20SeriesRef.current.setData(ma20.map((p) => ({ time: p.time, value: p.value }))); }
+    catch (e) { console.error('MA20 update error:', e); }
   }, [ma20]);
 
-  // Update MA60
   useEffect(() => {
     if (!ma60SeriesRef.current || ma60.length === 0) return;
-    try {
-      ma60SeriesRef.current.setData(ma60.map((p) => ({ time: p.time, value: p.value })));
-    } catch (e) {
-      console.error('MA60 update error:', e);
-    }
+    try { ma60SeriesRef.current.setData(ma60.map((p) => ({ time: p.time, value: p.value }))); }
+    catch (e) { console.error('MA60 update error:', e); }
   }, [ma60]);
 
-  // Signal markers
   useEffect(() => {
     if (!candleSeriesRef.current) return;
-    if (!signal) {
-      candleSeriesRef.current.setMarkers([]);
-      return;
-    }
+    if (!signal) { candleSeriesRef.current.setMarkers([]); return; }
     try {
-      candleSeriesRef.current.setMarkers([
-        {
-          time: signal.time,
-          position: signal.type === 'LONG' ? 'belowBar' : 'aboveBar',
-          color: signal.type === 'LONG' ? '#00c853' : '#ff1744',
-          shape: signal.type === 'LONG' ? 'arrowUp' : 'arrowDown',
-          text: signal.type === 'LONG' ? '入場' : '入場',
-        },
-      ]);
-    } catch (e) {
-      console.error('Marker error:', e);
-    }
+      candleSeriesRef.current.setMarkers([{
+        time: signal.time,
+        position: signal.type === 'LONG' ? 'belowBar' : 'aboveBar',
+        color: signal.type === 'LONG' ? '#00c853' : '#ff1744',
+        shape: signal.type === 'LONG' ? 'arrowUp' : 'arrowDown',
+        text: signal.type === 'LONG' ? '入場' : '入場',
+      }]);
+    } catch (e) { console.error('Marker error:', e); }
   }, [signal]);
 
   return (
     <div style={styles.wrapper}>
+      {/* Header row */}
       <div style={styles.header}>
-        <span style={styles.title}>📉 XAUUSDT 1H K線圖</span>
+        <span style={styles.title}>📉 {isEN ? 'Price Chart' : 'K線圖'}</span>
         <div style={styles.legend}>
-          <LegendDot color="#00c853" label="陽線" />
-          <LegendDot color="#ff1744" label="陰線" />
-          <LegendDot color="#2196f3" label="MA20" />
-          <LegendDot color="#ff9800" label="MA60" />
+          <LegendDot color="#00c853" label={isEN ? '🟩 Up candle' : '🟩 陽線（漲）'} />
+          <LegendDot color="#ff1744" label={isEN ? '🟥 Down candle' : '🟥 陰線（跌）'} />
+          <LegendDot color="#2196f3" label={isEN ? '━ MA20 (short trend)' : '━ MA20（短期）'} line />
+          <LegendDot color="#ff9800" label={isEN ? '━ MA60 (long trend)' : '━ MA60（長期）'} line />
           {signal && (
             <span style={{ fontSize: '0.72rem', color: signal.type === 'LONG' ? '#00c853' : '#ff1744', fontFamily: 'monospace' }}>
-              {signal.type === 'LONG' ? '▲ LONG' : '▼ SHORT'}
+              {signal.type === 'LONG' ? '▲ BUY signal' : '▼ SELL signal'}
             </span>
           )}
+          <button
+            onClick={() => setShowGuide(!showGuide)}
+            style={{ background: 'none', border: '1px solid #2a2a3e', color: '#555', fontSize: '0.65rem', padding: '2px 8px', borderRadius: 4, cursor: 'pointer', fontFamily: 'monospace' }}
+          >
+            {showGuide ? (isEN ? 'Hide guide ▲' : '收起說明 ▲') : (isEN ? 'How to read ▼' : '如何閱讀 ▼')}
+          </button>
         </div>
       </div>
+
+      {/* Beginner chart guide */}
+      {showGuide && (
+        <div style={styles.guideBox}>
+          <div style={styles.guideTitle}>{isEN ? '📚 How to read this chart' : '📚 如何閱讀K線圖'}</div>
+          <div style={styles.guideGrid}>
+            <GuideChip icon="🟩" color="#00c853"
+              title={isEN ? 'Green candle = Price went UP' : '綠色K線 = 該時段價格上漲'}
+              desc={isEN ? 'Closing price was HIGHER than opening price that hour.' : '本根K線收盤價高於開盤價。'} />
+            <GuideChip icon="🟥" color="#ff1744"
+              title={isEN ? 'Red candle = Price went DOWN' : '紅色K線 = 該時段價格下跌'}
+              desc={isEN ? 'Closing price was LOWER than opening price that hour.' : '本根K線收盤價低於開盤價。'} />
+            <GuideChip icon="━" color="#2196f3"
+              title={isEN ? 'Blue line = MA20' : '藍線 = MA20'}
+              desc={isEN ? 'Average of last 20 candles. Price above this line = bullish momentum.' : '最近20根K線均值。現價在線上 = 短期多頭動能。'} />
+            <GuideChip icon="━" color="#ff9800"
+              title={isEN ? 'Orange line = MA60' : '橙線 = MA60'}
+              desc={isEN ? 'Average of last 60 candles. The big-picture trend direction.' : '最近60根K線均值。代表大方向趨勢。'} />
+            <GuideChip icon="▲" color="#00c853"
+              title={isEN ? '▲ Arrow = BUY signal' : '▲ 箭頭 = 買入訊號'}
+              desc={isEN ? 'All 3 conditions met. The system says conditions are right to buy.' : '三個條件同時滿足。系統認為現在適合買入。'} />
+            <GuideChip icon="▼" color="#ff1744"
+              title={isEN ? '▼ Arrow = SELL signal' : '▼ 箭頭 = 賣出訊號'}
+              desc={isEN ? 'All 3 conditions met for short. Conditions are right to sell.' : '三個做空條件同時滿足。系統認為現在適合賣出。'} />
+          </div>
+          <div style={styles.guideNote}>
+            {isEN
+              ? '💡 Tip: Each candle on a 1H chart = 1 hour of trading. On a 4H chart, each candle = 4 hours. The taller the candle body, the bigger the price move that period.'
+              : '💡 提示：1小時圖上每根K線 = 1小時交易。4小時圖每根 = 4小時。K線實體越長，代表該時段價格波動越大。'}
+          </div>
+        </div>
+      )}
+
       <div ref={containerRef} />
-      <div style={styles.hint}>
-        👉 拖動滾動 K線 · 滚輪縮放 · 鐄色線左方=MA20(MA60)最新價
+
+      {/* Bottom bar */}
+      <div style={styles.bottomBar}>
+        <span style={styles.hint}>
+          {isEN
+            ? '👉 Drag to scroll · Scroll wheel to zoom · MA lines show their current value on the right'
+            : '👉 拖動滾動 K線 · 滾輪縮放 · 右側顯示MA最新值'}
+        </span>
+        <span style={styles.candleNote}>
+          {isEN ? '🕯️ Each candle = 1 price bar (open, high, low, close)' : '🕯️ 每根K線 = 開高低收四個價格'}
+        </span>
       </div>
     </div>
   );
 }
 
-function LegendDot({ color, label }: { color: string; label: string }) {
+function LegendDot({ color, label, line }: { color: string; label: string; line?: boolean }) {
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: '#888', fontFamily: 'monospace' }}>
-      <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
+      {line
+        ? <span style={{ width: 14, height: 2, background: color, display: 'inline-block', borderRadius: 1 }} />
+        : <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
+      }
       {label}
     </span>
   );
 }
 
+function GuideChip({ icon, color, title, desc }: { icon: string; color: string; title: string; desc: string }) {
+  return (
+    <div style={{ background: '#0f0f1a', border: `1px solid ${color}33`, borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ fontSize: '0.78rem', fontWeight: 'bold', color }}>{icon} {title}</div>
+      <div style={{ fontSize: '0.72rem', color: '#666', lineHeight: 1.5 }}>{desc}</div>
+    </div>
+  );
+}
+
 const styles: Record<string, React.CSSProperties> = {
-  wrapper: {
-    background: '#0f0f1a',
-    border: '1px solid #1a1a2e',
-    borderRadius: 12,
-    overflow: 'hidden',
-    maxWidth: 700,
-    width: '100%',
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '10px 16px',
-    borderBottom: '1px solid #1a1a2e',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
+  wrapper: { background: '#0f0f1a', border: '1px solid #1a1a2e', borderRadius: 12, overflow: 'hidden', maxWidth: 700, width: '100%' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid #1a1a2e', flexWrap: 'wrap', gap: 8 },
   title: { color: '#fff', fontFamily: 'monospace', fontSize: '0.88rem' },
   legend: { display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' },
-  hint: { padding: '5px 16px', fontSize: '0.68rem', color: '#2a2a3e', fontFamily: 'monospace', borderTop: '1px solid #1a1a2e' },
+  guideBox: { background: '#12122a', borderBottom: '1px solid #1a1a2e', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 },
+  guideTitle: { fontSize: '0.8rem', color: '#888', fontWeight: 'bold', fontFamily: 'monospace' },
+  guideGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 },
+  guideNote: { fontSize: '0.74rem', color: '#555', background: '#0f0f1a', border: '1px solid #1a1a2e', borderRadius: 6, padding: '8px 12px', lineHeight: 1.6 },
+  bottomBar: { padding: '6px 16px 8px', borderTop: '1px solid #1a1a2e', display: 'flex', flexDirection: 'column', gap: 2 },
+  hint: { fontSize: '0.68rem', color: '#2a2a4e', fontFamily: 'monospace' },
+  candleNote: { fontSize: '0.65rem', color: '#2a2a3e', fontFamily: 'monospace' },
 };

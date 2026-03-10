@@ -25,7 +25,9 @@ export default function PaperTradingPanel({ account, signal, lastPrice, symbol, 
   const [closePrice, setClosePrice] = useState('');
   const [resetInput, setResetInput] = useState('10000');
   const [confirmReset, setConfirmReset] = useState(false);
+  const [showHowTo, setShowHowTo] = useState(false);
 
+  const isEN = lang === 'EN';
   const pos = account.openPosition;
   const price = parseFloat(manualEntry) || lastPrice || 0;
   const capital = parseFloat(capitalInput) || 1000;
@@ -47,6 +49,91 @@ export default function PaperTradingPanel({ account, signal, lastPrice, symbol, 
       </div>
       <div style={styles.notice}>{tr('paperNotice', lang)}</div>
 
+      {/* ── Beginner: How-to tip (always visible, collapsible) ── */}
+      <div style={styles.howToWrapper}>
+        <button
+          onClick={() => setShowHowTo(!showHowTo)}
+          style={styles.howToToggle}
+        >
+          <span>💡 {isEN ? 'New to Paper Trading? Read this first' : '第一次模擬交易？先看這裡'}</span>
+          <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: '#888' }}>{showHowTo ? '▲' : '▼'}</span>
+        </button>
+
+        {showHowTo && (
+          <div style={styles.howToBody}>
+            {/* Step-by-step */}
+            <div style={styles.howToTitle}>{isEN ? '🧸 How Paper Trading works — 3 easy steps:' : '🧸 模擬交易怎麼玩 — 3個簡單步驟：'}</div>
+            <div style={styles.stepsCol}>
+              <HowToStep
+                num="1"
+                color="#f0b90b"
+                title={isEN ? 'Go back to Live mode and wait for a signal' : '切換回即時模式等待訊號'}
+                desc={isEN
+                  ? 'Watch the Signal Panel. When you see a 🟢 BUY or 🔴 SELL signal appear, come back here.'
+                  : '觀察訊號面板。當出現 🟢 買入 或 🔴 賣出 訊號時，返回此頁面。'}
+              />
+              <HowToStep
+                num="2"
+                color="#29b6f6"
+                title={isEN ? 'Click "Open by Signal" — all values auto-fill' : '點擊「依訊號開倉」— 所有數值自動填入'}
+                desc={isEN
+                  ? 'The yellow button below will appear when a signal is active. It auto-fills entry price, stop loss, and take profit for you. You only need to set how much capital to use.'
+                  : '當訊號出現時，下方黃色按鈕會自動出現。它會自動填入入場價、止蝕和止盈，你只需設定投入金額。'}
+              />
+              <HowToStep
+                num="3"
+                color="#00c853"
+                title={isEN ? 'Watch the trade — close at Stop Loss or Take Profit' : '觀察交易 — 在止蝕或止盈時平倉'}
+                desc={isEN
+                  ? 'The system will warn you when price hits your stop loss or take profit. Click "Market Close" to end the trade. No real money is involved — this is all practice!'
+                  : '當價格觸及止蝕或止盈時，系統會提醒你。點擊「市價平倉」結束交易。全程沒有真實資金——純粹練習！'}
+              />
+            </div>
+
+            {/* Starter capital tip */}
+            <div style={styles.capitalTip}>
+              <span style={{ fontSize: '1rem' }}>💰</span>
+              <span style={{ fontSize: '0.78rem', color: '#aaa', lineHeight: 1.6 }}>
+                {isEN
+                  ? <><b style={{ color: '#f0b90b' }}>Beginner tip:</b> Start with <b style={{ color: '#f0b90b' }}>$1,000</b> per trade in the capital field below. This keeps your practice realistic — you"ll feel the wins and losses without it being overwhelming.<br/>Never use more than 10% of your total balance on a single trade.</>
+                  : <><b style={{ color: '#f0b90b' }}>新手提示：</b>在下方資金欄位中，建議每次交易輸入 <b style={{ color: '#f0b90b' }}>$1,000</b>。這樣練習更貼近真實，感受盈虧但不會壓力過大。<br/>每次交易不要超過總資金的10%。</>}
+              </span>
+            </div>
+
+            {/* Signal waiting banner */}
+            {!signal && (
+              <div style={styles.waitBanner}>
+                <span style={{ fontSize: '1.2rem' }}>⏳</span>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: '#f0b90b', fontWeight: 'bold' }}>
+                    {isEN ? 'No signal right now — don\'t rush!' : '目前沒有訊號 — 不要急！'}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#888', marginTop: 3, lineHeight: 1.5 }}>
+                    {isEN
+                      ? 'Switch to Live mode, open the Signal Panel, and wait for a 🟢 or 🔴 signal. Then come back here and use "Open by Signal" — all values will auto-fill.'
+                      : '切換至即時模式，打開訊號面板，等待 🟢 或 🔴 訊號出現。然後回到這裡點擊「依訊號開倉」，所有數值將自動填入。'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {signal && (
+              <div style={{ ...styles.waitBanner, background: '#0d2a0d', borderColor: '#00c85355' }}>
+                <span style={{ fontSize: '1.2rem' }}>{signal.type === 'LONG' ? '🟢' : '🔴'}</span>
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: '#00c853', fontWeight: 'bold' }}>
+                    {isEN ? `Active ${signal.type} signal at $${signal.price.toFixed(2)}` : `活躍 ${signal.type} 訊號 @ $${signal.price.toFixed(2)}`}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#888', marginTop: 3 }}>
+                    {isEN ? '👇 Scroll down and click the yellow "Open by Signal" button!' : '👇 向下滾動，點擊黃色「依訊號開倉」按鈕！'}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {!pos ? (
         <div style={styles.form}>
           <div style={styles.formTitle}>{tr('openPos', lang)}</div>
@@ -62,7 +149,7 @@ export default function PaperTradingPanel({ account, signal, lastPrice, symbol, 
                 ))}
               </div>
             </Field>
-            <Field label={tr('capitalInput', lang)}>
+            <Field label={`${tr('capitalInput', lang)} — ${isEN ? 'try $1,000 to start' : '建議從 $1,000 開始'}`}>
               <input style={styles.input} type="number" value={capitalInput} onChange={(e) => setCapitalInput(e.target.value)} placeholder="1000" />
             </Field>
             <Field label={`${tr('entryPrice', lang)} (${lastPrice?.toFixed(2) ?? '---'})`}>
@@ -139,6 +226,18 @@ export default function PaperTradingPanel({ account, signal, lastPrice, symbol, 
   );
 }
 
+function HowToStep({ num, color, title, desc }: { num: string; color: string; title: string; desc: string }) {
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <span style={{ background: color, color: '#000', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 'bold', flexShrink: 0, marginTop: 2 }}>{num}</span>
+      <div>
+        <div style={{ fontSize: '0.8rem', color, fontWeight: 'bold', marginBottom: 2 }}>{title}</div>
+        <div style={{ fontSize: '0.74rem', color: '#777', lineHeight: 1.6 }}>{desc}</div>
+      </div>
+    </div>
+  );
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
@@ -168,6 +267,13 @@ const styles: Record<string, React.CSSProperties> = {
   wrapper: { background:'#1a1a2e', border:'1px solid #29b6f6', borderRadius:10, padding:16, maxWidth:700, width:'100%', display:'flex', flexDirection:'column', gap:12 },
   header: { display:'flex', gap:16, flexWrap:'wrap', background:'#0f0f1a', borderRadius:8, padding:'10px 14px' },
   notice: { fontSize:'0.75rem', color:'#29b6f6', fontFamily:'monospace', background:'#0d2a3e', padding:'6px 10px', borderRadius:6, border:'1px solid #29b6f630' },
+  howToWrapper: { background: '#0d0d1e', border: '1px solid #2a2a3e', borderRadius: 8, overflow: 'hidden' },
+  howToToggle: { width: '100%', background: 'none', border: 'none', color: '#f0b90b', padding: '10px 14px', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', display: 'flex', alignItems: 'center', textAlign: 'left', gap: 8 },
+  howToBody: { padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 12 },
+  howToTitle: { fontSize: '0.8rem', color: '#888', fontWeight: 'bold', fontFamily: 'monospace', marginBottom: 2 },
+  stepsCol: { display: 'flex', flexDirection: 'column', gap: 12 },
+  capitalTip: { display: 'flex', gap: 10, alignItems: 'flex-start', background: '#1a1500', border: '1px solid #f0b90b33', borderRadius: 8, padding: '10px 12px' },
+  waitBanner: { display: 'flex', gap: 12, alignItems: 'flex-start', background: '#1a1200', border: '1px solid #f0b90b33', borderRadius: 8, padding: '10px 12px' },
   form: { display:'flex', flexDirection:'column', gap:10 },
   formTitle: { fontSize:'0.8rem', color:'#888', fontFamily:'monospace', fontWeight:'bold' },
   signalHint: { fontSize:'0.78rem', color:'#f0b90b', fontFamily:'monospace', background:'#1a1500', padding:'6px 10px', borderRadius:6 },
