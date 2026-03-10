@@ -1,13 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
 import { useBinanceKlines } from './hooks/useBinanceKlines';
 import { useSignalHistory } from './hooks/useSignalHistory';
+import { useTelegram } from './hooks/useTelegram';
 import { calculateSMA } from './utils/ma';
 import { detectSignal } from './utils/signal';
 import ControlBar from './components/ControlBar';
 import KlineChart from './components/KlineChart';
 import SignalPanel from './components/SignalPanel';
 import SignalHistory from './components/SignalHistory';
+import TelegramSettings from './components/TelegramSettings';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Interval } from './types/binance';
 import './App.css';
@@ -23,11 +26,19 @@ export default function App() {
   const ma60 = calculateSMA(candles, ma2Period);
   const signal = detectSignal(candles, ma1Period, ma2Period);
   const { history, clearHistory } = useSignalHistory(signal);
+  const { config, saveConfig, sendMessage, testSend, sending, lastStatus } = useTelegram();
 
-  // Toast + browser notification
+  // Track last notified signal time to avoid re-sending on re-render
+  const lastNotifiedRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (!signal) return;
+    if (lastNotifiedRef.current === signal.time) return;
+    lastNotifiedRef.current = signal.time;
+
     const isLong = signal.type === 'LONG';
+
+    // In-app toast
     toast(signal.message, {
       icon: isLong ? '🟢' : '🔴',
       style: {
@@ -36,11 +47,31 @@ export default function App() {
         border: `1px solid ${isLong ? '#00c853' : '#ff1744'}`,
         fontFamily: 'monospace',
       },
-      duration: 10000,
+      duration: 12000,
     });
+
+    // Browser notification
     if (Notification.permission === 'granted') {
-      new Notification(`KMA ${signal.type} - ${symbol}`, { body: signal.message });
+      new Notification(`KMA ${signal.type} — ${symbol}`, { body: signal.message });
     }
+
+    // Telegram alert
+    const tgMsg = [
+      `${isLong ? '🟢' : '🔴'} <b>KMA ${signal.type} 入場訊號</b>`,
+      ``,
+      `💰 <b>資產:</b> ${symbol}`,
+      `📊 <b>價格:</b> $${signal.price.toFixed(2)}`,
+      `📈 <b>MA參考:</b> $${signal.ma.toFixed(2)}`,
+      ``,
+      `🛑 <b>止蝕:</b> $${(isLong ? signal.price * 0.99 : signal.price * 1.01).toFixed(2)}`,
+      `🎯 <b>止盈:</b> $${(isLong ? signal.price * 1.03 : signal.price * 0.97).toFixed(2)}`,
+      `📊 <b>盈虧比:</b> 3:1`,
+      ``,
+      `⏰ ${new Date(signal.time * 1000).toLocaleString('zh-HK')}`,
+      ``,
+      `<i>⚠️ 僅供參考，非投資建議</i>`,
+    ].join('\n');
+    sendMessage(tgMsg);
   }, [signal?.time]);
 
   useEffect(() => {
@@ -59,30 +90,29 @@ export default function App() {
           <h1 style={styles.header}>📈 K均交易法</h1>
           <div style={styles.subHeader}>{symbolLabel} · {interval.toUpperCase()} · MA{ma1Period}/MA{ma2Period}</div>
         </div>
-        <span style={styles.liveBadge}>📡 即時</span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+          <span style={styles.liveBadge}>📡 即時</span>
+          {config.enabled && (
+            <span style={styles.tgBadge}>
+              {sending ? '⏳ TG發送...' : '📨 TG開啟'}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Control Bar */}
       <ControlBar
-        symbol={symbol}
-        interval={interval}
-        ma1Period={ma1Period}
-        ma2Period={ma2Period}
-        onSymbolChange={setSymbol}
-        onIntervalChange={setInterval}
-        onMa1Change={setMa1Period}
-        onMa2Change={setMa2Period}
+        symbol={symbol} interval={interval}
+        ma1Period={ma1Period} ma2Period={ma2Period}
+        onSymbolChange={setSymbol} onIntervalChange={setInterval}
+        onMa1Change={setMa1Period} onMa2Change={setMa2Period}
       />
 
-      {/* Loading / Error */}
-      {loading && (
-        <div style={styles.status}>⏳ 載入 {symbol} K線數據中...</div>
-      )}
-      {error && !loading && (
-        <div style={{ ...styles.status, color: '#ff1744' }}>❌ {error}</div>
-      )}
+      {/* Status */}
+      {loading && <div style={styles.status}>⏳ 載入 {symbol} K線數據中...</div>}
+      {error && !loading && <div style={{ ...styles.status, color: '#ff1744' }}>❌ {error}</div>}
 
-      {/* K-line Chart */}
+      {/* Chart */}
       {!loading && !error && (
         <ErrorBoundary fallback="K線圖載入失敗">
           <KlineChart candles={candles} ma20={ma20} ma60={ma60} signal={signal} />
@@ -96,87 +126,53 @@ export default function App() {
         </ErrorBoundary>
       )}
 
+      {/* Telegram Settings */}
+      <TelegramSettings
+        config={config}
+        onSave={saveConfig}
+        onTest={testSend}
+        sending={sending}
+        lastStatus={lastStatus}
+      />
+
       {/* Signal History */}
       {history.length > 0 && (
         <div style={{ maxWidth: 700, width: '100%' }}>
           <SignalHistory history={history} />
-          <button onClick={clearHistory} style={styles.clearBtn}>
-            🗑 清除記錄
-          </button>
+          <button onClick={clearHistory} style={styles.clearBtn}>🗑 清除記錄</button>
         </div>
       )}
 
-      <p style={styles.footer}>
-        📡 {candles.length} 根K線 · 每10秒更新 · 訊號記錄儲存於本機
-      </p>
-      <p style={{ ...styles.footer, color: '#1a1a2e' }}>
-        ⚠️ 僅供參考，非投資建議。投資有風險。
-      </p>
+      <p style={styles.footer}>📡 {candles.length} 根K線 · 每10秒更新 · 訊號記錄儲存於本機</p>
+      <p style={{ ...styles.footer, color: '#111' }}>⚠️ 僅供參考，非投資建議。投資有風險。</p>
     </main>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
   main: {
-    minHeight: '100vh',
-    background: '#0f0f1a',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    padding: '16px 12px',
-    gap: 12,
+    minHeight: '100vh', background: '#0f0f1a',
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    padding: '16px 12px', gap: 12,
   },
   headerRow: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    width: '100%',
-    maxWidth: 700,
+    display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+    width: '100%', maxWidth: 700,
   },
-  header: {
-    color: '#f0b90b',
-    fontFamily: 'monospace',
-    fontSize: '1.15rem',
-    margin: 0,
-  },
-  subHeader: {
-    color: '#555',
-    fontFamily: 'monospace',
-    fontSize: '0.75rem',
-    marginTop: 3,
-  },
+  header: { color: '#f0b90b', fontFamily: 'monospace', fontSize: '1.15rem', margin: 0 },
+  subHeader: { color: '#555', fontFamily: 'monospace', fontSize: '0.75rem', marginTop: 3 },
   liveBadge: {
-    background: '#0d3d1f',
-    color: '#00c853',
-    border: '1px solid #00c853',
-    padding: '3px 10px',
-    borderRadius: 20,
-    fontSize: '0.7rem',
-    fontFamily: 'monospace',
-    marginTop: 4,
+    background: '#0d3d1f', color: '#00c853', border: '1px solid #00c853',
+    padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontFamily: 'monospace',
   },
-  status: {
-    color: '#888',
-    fontFamily: 'monospace',
-    fontSize: '0.9rem',
-    maxWidth: 700,
-    width: '100%',
+  tgBadge: {
+    background: '#0d2a3e', color: '#29b6f6', border: '1px solid #29b6f6',
+    padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontFamily: 'monospace',
   },
+  status: { color: '#888', fontFamily: 'monospace', fontSize: '0.9rem', maxWidth: 700, width: '100%' },
   clearBtn: {
-    background: 'none',
-    border: 'none',
-    color: '#333',
-    fontFamily: 'monospace',
-    fontSize: '0.72rem',
-    cursor: 'pointer',
-    marginTop: 6,
-    padding: '2px 6px',
+    background: 'none', border: 'none', color: '#333',
+    fontFamily: 'monospace', fontSize: '0.72rem', cursor: 'pointer', marginTop: 6, padding: '2px 6px',
   },
-  footer: {
-    color: '#2a2a3e',
-    fontSize: '0.72rem',
-    fontFamily: 'monospace',
-    textAlign: 'center',
-    margin: 0,
-  },
+  footer: { color: '#2a2a3e', fontSize: '0.72rem', fontFamily: 'monospace', textAlign: 'center', margin: 0 },
 };
