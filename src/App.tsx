@@ -3,6 +3,7 @@ import { Toaster, toast } from 'react-hot-toast';
 import { useBinanceKlines } from './hooks/useBinanceKlines';
 import { useSignalHistory } from './hooks/useSignalHistory';
 import { useTelegram } from './hooks/useTelegram';
+import { useEmail } from './hooks/useEmail';
 import { useTradeJournal } from './hooks/useTradeJournal';
 import { usePaperTrading } from './hooks/usePaperTrading';
 import { calculateSMA } from './utils/ma';
@@ -13,6 +14,7 @@ import KlineChart from './components/KlineChart';
 import SignalPanel from './components/SignalPanel';
 import SignalHistory from './components/SignalHistory';
 import TelegramSettings from './components/TelegramSettings';
+import EmailSettings from './components/EmailSettings';
 import PositionCalculator from './components/PositionCalculator';
 import TradeJournal from './components/TradeJournal';
 import PaperTradingPanel from './components/PaperTradingPanel';
@@ -121,6 +123,7 @@ export default function App() {
   const signal = detectSignal(candles, ma1Period, ma2Period);
   const { history, clearHistory } = useSignalHistory(signal);
   const { config, saveConfig, sendMessage, testSend, sending, lastStatus } = useTelegram();
+  const { emailConfig, saveEmailConfig, sendEmail, testEmail, emailSending, emailStatus } = useEmail();
   const { trades, addTrade, closeTrade, deleteTrade, clearAll } = useTradeJournal();
   const { account, openPosition, closePosition, resetAccount, pnl: paperPnl, pnlPct: paperPnlPct } = usePaperTrading(addTrade);
   const lastNotifiedRef = useRef<number | null>(null);
@@ -130,35 +133,46 @@ export default function App() {
   const symbolLabel = symbol === 'XAUUSDT' ? '💥 ' + (isEN ? 'Gold' : '黃金')
     : symbol === 'BTCUSDT' ? '₿ BTC' : 'Ξ ETH';
 
-  const dismissOnboard = () => {
-    localStorage.setItem('onboard_dismissed', '1');
-    setShowOnboard(false);
-  };
-
-  const dismissRoadmap = () => {
-    localStorage.setItem('roadmap_dismissed', '1');
-    setShowRoadmap(false);
-  };
+  const dismissOnboard = () => { localStorage.setItem('onboard_dismissed', '1'); setShowOnboard(false); };
+  const dismissRoadmap = () => { localStorage.setItem('roadmap_dismissed', '1'); setShowRoadmap(false); };
 
   useEffect(() => {
     if (mode !== 'LIVE' || !signal) return;
     if (lastNotifiedRef.current === signal.time) return;
     lastNotifiedRef.current = signal.time;
     const isLong = signal.type === 'LONG';
+
+    // ── Toast notification ──
     toast(signal.message, {
       icon: isLong ? '🟢' : '🔴',
       style: { background: isLong ? '#0d3d1f' : '#3d0d0d', color: '#fff', border: `1px solid ${isLong ? '#00c853' : '#ff1744'}`, fontFamily: 'monospace' },
       duration: 12000,
     });
+
+    // ── Browser notification ──
     if (Notification.permission === 'granted') new Notification(`KMA ${signal.type} — ${symbol}`, { body: signal.message });
+
+    // ── Telegram ──
     const tgMsg = [
       `${isLong ? '🟢' : '🔴'} <b>KMA ${signal.type} Entry Signal</b>`,
       `💰 <b>Asset:</b> ${symbol}  📊 <b>Price:</b> $${signal.price.toFixed(2)}`,
-      `🛑 <b>S/L:</b> $${(isLong ? signal.price*0.99 : signal.price*1.01).toFixed(2)}  🎯 <b>T/P:</b> $${(isLong ? signal.price*1.03 : signal.price*0.97).toFixed(2)}`,
-      `⏰ ${new Date(signal.time*1000).toLocaleString('en-HK')}`,
+      `🛑 <b>S/L:</b> $${(isLong ? signal.price * 0.99 : signal.price * 1.01).toFixed(2)}  🎯 <b>T/P:</b> $${(isLong ? signal.price * 1.03 : signal.price * 0.97).toFixed(2)}`,
+      `⏰ ${new Date(signal.time * 1000).toLocaleString('en-HK')}`,
       `<i>⚠️ For reference only</i>`,
     ].join('\n');
     sendMessage(tgMsg);
+
+    // ── Email ──
+    sendEmail({
+      subject: `${isLong ? '🟢 LONG' : '🔴 SHORT'} Signal — ${symbol} @ $${signal.price.toFixed(2)}`,
+      signal_type: isLong ? '🟢 LONG' : '🔴 SHORT',
+      asset: symbol,
+      price: signal.price.toFixed(2),
+      stop_loss: (isLong ? signal.price * 0.99 : signal.price * 1.01).toFixed(2),
+      take_profit: (isLong ? signal.price * 1.03 : signal.price * 0.97).toFixed(2),
+      time: new Date(signal.time * 1000).toLocaleString('en-HK'),
+      message: signal.message,
+    });
   }, [signal?.time, mode]);
 
   useEffect(() => {
@@ -196,9 +210,7 @@ export default function App() {
       )}
 
       {/* ── Beginner Roadmap ── */}
-      {showRoadmap && (
-        <BeginnerRoadmap lang={lang} onDismiss={dismissRoadmap} />
-      )}
+      {showRoadmap && <BeginnerRoadmap lang={lang} onDismiss={dismissRoadmap} />}
       {!showRoadmap && (
         <button
           onClick={() => { localStorage.removeItem('roadmap_dismissed'); setShowRoadmap(true); }}
@@ -223,6 +235,9 @@ export default function App() {
           </span>
           {mode === 'LIVE' && config.enabled && (
             <span style={styles.tgBadge}>{sending ? tr('badgeTGSending', lang) : tr('badgeTG', lang)}</span>
+          )}
+          {mode === 'LIVE' && emailConfig.enabled && (
+            <span style={styles.emailBadge}>{emailSending ? (isEN ? '📧 Sending…' : '📧 發送中…') : (isEN ? '📧 Email ON' : '📧 電郵開啟')}</span>
           )}
         </div>
       </div>
@@ -273,6 +288,7 @@ export default function App() {
             <TradeJournal trades={trades} onClose={closeTrade} onDelete={deleteTrade} onClear={clearAll} lang={lang} />
           </ErrorBoundary>
           <TelegramSettings config={config} onSave={saveConfig} onTest={testSend} sending={sending} lastStatus={lastStatus} lang={lang} />
+          <EmailSettings config={emailConfig} onSave={saveEmailConfig} onTest={testEmail} sending={emailSending} lastStatus={emailStatus} lang={lang} />
           {history.length > 0 && (
             <div style={{ maxWidth: 700, width: '100%' }}>
               <SignalHistory history={history} />
@@ -329,6 +345,7 @@ const styles: Record<string, React.CSSProperties> = {
   subHeader: { color: '#555', fontFamily: 'monospace', fontSize: '0.75rem', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 },
   badge: { border: '1px solid', padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontFamily: 'monospace' },
   tgBadge: { background: '#0d2a3e', color: '#29b6f6', border: '1px solid #29b6f6', padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontFamily: 'monospace' },
+  emailBadge: { background: '#1a0d2e', color: '#ce93d8', border: '1px solid #ce93d8', padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontFamily: 'monospace' },
   statusCard: { background: '#1a1a2e', border: '1px solid #2a2a3e', borderRadius: 10, padding: '14px 18px', maxWidth: 700, width: '100%', color: '#888', fontFamily: 'monospace', fontSize: '0.85rem', display: 'flex', gap: 10, alignItems: 'center' },
   clearBtn: { background: 'none', border: 'none', color: '#333', fontFamily: 'monospace', fontSize: '0.72rem', cursor: 'pointer', marginTop: 6, padding: '2px 6px' },
   footer: { color: '#2a2a3e', fontSize: '0.72rem', fontFamily: 'monospace', textAlign: 'center', margin: 0, marginTop: 8 },
