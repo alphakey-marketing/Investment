@@ -272,7 +272,7 @@ export default function App() {
           <ErrorBoundary fallback="Journal failed">
             <TradeJournal trades={trades} onClose={closeTrade} onDelete={deleteTrade} onClear={clearAll} lang={lang} />
           </ErrorBoundary>
-          <TelegramSettings config={config} onSave={saveConfig} onTest={testSend} sending={sending} lastStatus={lastStatus} />
+          <TelegramSettings config={config} onSave={saveConfig} onTest={testSend} sending={sending} lastStatus={lastStatus} lang={lang} />
           {history.length > 0 && (
             <div style={{ maxWidth: 700, width: '100%' }}>
               <SignalHistory history={history} />
