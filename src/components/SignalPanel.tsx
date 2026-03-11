@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SignalEvent, MAPoint } from '../types/binance';
+import { Candle, SignalEvent, MAPoint } from '../types/binance';
 import { Lang, tr } from '../i18n';
 
 interface Props {
@@ -8,6 +8,7 @@ interface Props {
   ma60: MAPoint[];
   lastPrice: number | null;
   lang: Lang;
+  candles?: Candle[];
 }
 
 function Tip({ text, children }: { text: string; children: React.ReactNode }) {
@@ -363,7 +364,7 @@ function GuideItem({ tag, tagColor, children }: { tag: string; tagColor: string;
 }
 
 // ─── Main Export ───────────────────────────────────────────────────────────────
-export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang }: Props) {
+export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang, candles }: Props) {
   const latestMA20 = ma20[ma20.length - 1]?.value ?? null;
   const latestMA60 = ma60[ma60.length - 1]?.value ?? null;
   const isEN = lang === 'EN';
