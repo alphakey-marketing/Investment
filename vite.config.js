@@ -20,5 +20,16 @@ export default defineConfig({
       '.repl.co',
       '.sisko.replit.dev',
     ],
+    // ── Futu proxy: forward /api/* → localhost:3001 in dev ──────────────────
+    // When FutuOpenD + the proxy server are running, this makes /api/klines/...
+    // calls work seamlessly from the React dev server without CORS issues.
+    proxy: {
+      '/api': {
+        target:       'http://localhost:3001',
+        changeOrigin: true,
+        // If the proxy is down, Vite will return a 503 and the hook's
+        // try/catch will automatically fall back to Yahoo Finance.
+      },
+    },
   },
 });

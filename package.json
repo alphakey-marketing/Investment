@@ -2,27 +2,30 @@
   "name": "kma-investment-app",
   "version": "1.0.0",
   "type": "module",
-  "description": "K均交易法 Investment Signal App - XAUUSDT",
+  "description": "K均交易法 Investment Signal App — HK Futures",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "dev":      "vite",
+    "build":    "tsc && vite build",
+    "preview":  "vite preview",
+    "server":   "npm run start --prefix server",
+    "server:dev": "npm run dev --prefix server",
+    "setup":    "npm install && npm install --prefix server"
   },
-  "keywords": ["trading", "xauusdt", "binance", "kma"],
+  "keywords": ["trading", "hk-futures", "futu", "kma"],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "lightweight-charts": "4.2.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-hot-toast": "^2.4.1",
-    "zustand": "^4.4.1"
+    "react":              "^18.2.0",
+    "react-dom":          "^18.2.0",
+    "react-hot-toast":    "^2.4.1",
+    "zustand":            "^4.4.1"
   },
   "devDependencies": {
-    "@types/react": "^18.2.0",
+    "@types/react":     "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.0.0",
-    "typescript": "^5.1.6",
-    "vite": "^4.4.5"
+    "typescript":       "^5.1.6",
+    "vite":             "^4.4.5"
   }
 }
