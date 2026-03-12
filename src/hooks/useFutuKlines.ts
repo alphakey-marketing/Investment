@@ -1,15 +1,12 @@
 /**
  * useFutuKlines — HK Futures / HKEX market data hook
  *
- * Sprint 2: Now uses the local Futu proxy server by default.
- * Falls back to Yahoo Finance (allorigins CORS proxy) if the Futu proxy
- * is unreachable (e.g. FutuOpenD not running yet).
- *
  * Data source priority:
- *   1. Futu proxy  http://localhost:3001/api/klines/:symbol/:interval
- *   2. Yahoo Finance (fallback, 60s poll, delayed)
+ *   1. Futu proxy  /api/klines/:symbol/:interval  (real-time, 10s poll)
+ *   2. Yahoo Finance fallback                      (delayed,  60s poll)
  *
- * Return shape is identical to useBinanceKlines so App.tsx is a 1-line swap.
+ * FIX #6: replaced recursive setTimeout with setInterval + isCancelled flag
+ * to prevent double-chain when symbol/interval changes quickly.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Candle } from '../types/binance';
@@ -17,13 +14,11 @@ import { FutuSymbol, FUTU_TO_YAHOO } from '../types/futu';
 
 export type HKInterval = '5m' | '15m' | '1h' | '4h' | '1d';
 
-// ── Futu proxy ──────────────────────────────────────────────────────────────
-const PROXY_BASE = '/api';  // Vite proxies /api → localhost:3001 in dev
-                             // In production, point to your deployed proxy
-
-async function fetchFromFutuProxy(symbol: string, interval: HKInterval, limit = 200): Promise<Candle[]> {
-  const res = await fetch(`${PROXY_BASE}/klines/${encodeURIComponent(symbol)}/${interval}?limit=${limit}`,
-    { signal: AbortSignal.timeout(5000) }  // 5s timeout — fast fail if OpenD not running
+// ── Futu proxy ────────────────────────────────────────────────────────────
+async function fetchFromFutuProxy(symbol: string, interval: HKInterval, limit: number): Promise<Candle[]> {
+  const res = await fetch(
+    `/api/klines/${encodeURIComponent(symbol)}/${interval}?limit=${limit}`,
+    { signal: AbortSignal.timeout(5000) }
   );
   if (!res.ok) throw new Error(`Proxy HTTP ${res.status}`);
   const data: Candle[] = await res.json();
@@ -31,21 +26,12 @@ async function fetchFromFutuProxy(symbol: string, interval: HKInterval, limit = 
   return data;
 }
 
-// ── Yahoo Finance fallback ──────────────────────────────────────────────────
+// ── Yahoo Finance fallback ─────────────────────────────────────────────────
 const YAHOO_INTERVAL_MAP: Record<HKInterval, string> = {
-  '5m':  '5m',
-  '15m': '15m',
-  '1h':  '60m',
-  '4h':  '1d',
-  '1d':  '1d',
+  '5m': '5m', '15m': '15m', '1h': '60m', '4h': '1d', '1d': '1d',
 };
-
 const YAHOO_RANGE_MAP: Record<HKInterval, string> = {
-  '5m':  '5d',
-  '15m': '10d',
-  '1h':  '60d',
-  '4h':  '1y',
-  '1d':  '2y',
+  '5m': '5d', '15m': '10d', '1h': '60d', '4h': '1y', '1d': '2y',
 };
 
 function yahooUrl(ticker: string, interval: HKInterval): string {
@@ -57,21 +43,16 @@ function parseYahooChart(json: unknown): Candle[] {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = (json as any)?.chart?.result?.[0];
   if (!result) return [];
-  const timestamps: number[] = result.timestamp ?? [];
-  const q = result.indicators?.quote?.[0] ?? {};
-  const opens:  number[] = q.open   ?? [];
-  const highs:  number[] = q.high   ?? [];
-  const lows:   number[] = q.low    ?? [];
-  const closes: number[] = q.close  ?? [];
-  const vols:   number[] = q.volume ?? [];
-  return timestamps
+  const ts: number[]  = result.timestamp ?? [];
+  const q             = result.indicators?.quote?.[0] ?? {};
+  return ts
     .map((t, i) => ({
       time:   t,
-      open:   opens[i]  ?? closes[i] ?? 0,
-      high:   highs[i]  ?? closes[i] ?? 0,
-      low:    lows[i]   ?? closes[i] ?? 0,
-      close:  closes[i] ?? 0,
-      volume: vols[i]   ?? 0,
+      open:   q.open?.[i]   ?? q.close?.[i] ?? 0,
+      high:   q.high?.[i]   ?? q.close?.[i] ?? 0,
+      low:    q.low?.[i]    ?? q.close?.[i] ?? 0,
+      close:  q.close?.[i]  ?? 0,
+      volume: q.volume?.[i] ?? 0,
     }))
     .filter((c) => c.close > 0);
 }
@@ -79,7 +60,7 @@ function parseYahooChart(json: unknown): Candle[] {
 async function fetchFromYahoo(symbol: FutuSymbol, interval: HKInterval): Promise<Candle[]> {
   const ticker = FUTU_TO_YAHOO[symbol];
   if (!ticker) throw new Error(`No Yahoo ticker for ${symbol}`);
-  const res = await fetch(yahooUrl(ticker, interval));
+  const res    = await fetch(yahooUrl(ticker, interval));
   if (!res.ok) throw new Error(`Yahoo HTTP ${res.status}`);
   const wrapper = await res.json();
   const inner   = JSON.parse(wrapper.contents ?? '{}');
@@ -89,13 +70,13 @@ async function fetchFromYahoo(symbol: FutuSymbol, interval: HKInterval): Promise
 }
 
 // ── Poll intervals ──────────────────────────────────────────────────────────
-const FUTU_POLL_MS  =  10_000;  // Futu: real-time, poll every 10s
-const YAHOO_POLL_MS =  60_000;  // Yahoo: rate-limited, poll every 60s
+const FUTU_POLL_MS  = 10_000;
+const YAHOO_POLL_MS = 60_000;
 
-// ── Hook ────────────────────────────────────────────────────────────────────
+// ── Hook ───────────────────────────────────────────────────────────────────
 export function useFutuKlines(
   interval: HKInterval = '15m',
-  _limit = 200,
+  limit = 200,
   symbol: FutuSymbol = 'HK.MHImain'
 ) {
   const [candles,    setCandles]    = useState<Candle[]>([]);
@@ -103,59 +84,64 @@ export function useFutuKlines(
   const [error,      setError]      = useState<string | null>(null);
   const [lastPrice,  setLastPrice]  = useState<number | null>(null);
   const [dataSource, setDataSource] = useState<'futu' | 'yahoo' | null>(null);
-  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollMsRef = useRef<number>(YAHOO_POLL_MS);
+
+  // FIX #6: use a single ref that stores the current interval ID and a cancel flag
+  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cancelRef   = useRef(false);
 
   const fetchKlines = useCallback(async () => {
-    // Try Futu proxy first, fall back to Yahoo
     try {
-      const data = await fetchFromFutuProxy(symbol, interval, _limit);
+      const data = await fetchFromFutuProxy(symbol, interval, limit);
+      if (cancelRef.current) return;           // symbol changed while fetching
       setCandles(data);
       setLastPrice(data[data.length - 1]?.close ?? null);
       setError(null);
       setDataSource('futu');
-      pollMsRef.current = FUTU_POLL_MS;   // speed up polling on success
-    } catch (futuErr) {
-      // Futu proxy unavailable — silently fall back to Yahoo
+
+      // Switch to fast poll if we're on slow Yahoo schedule
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = setInterval(fetchKlines, FUTU_POLL_MS);
+      }
+    } catch {
+      // Futu proxy down — fall back to Yahoo silently
       try {
         const data = await fetchFromYahoo(symbol as FutuSymbol, interval);
+        if (cancelRef.current) return;
         setCandles(data);
         setLastPrice(data[data.length - 1]?.close ?? null);
-        setDataSource('yahoo');
         setError(null);
-        pollMsRef.current = YAHOO_POLL_MS;
+        setDataSource('yahoo');
       } catch (yahooErr) {
+        if (cancelRef.current) return;
         setError(
-          `無法載入 ${symbol} 數據\n` +
-          `Futu: ${futuErr instanceof Error ? futuErr.message : futuErr}\n` +
-          `Yahoo: ${yahooErr instanceof Error ? yahooErr.message : yahooErr}`
+          `無法載入 ${symbol} 數據: ${yahooErr instanceof Error ? yahooErr.message : yahooErr}`
         );
       }
     } finally {
-      setLoading(false);
+      if (!cancelRef.current) setLoading(false);
     }
-  }, [symbol, interval, _limit]);
+  }, [symbol, interval, limit]);
 
-  // Re-subscribe whenever symbol/interval changes
   useEffect(() => {
+    // FIX #6: cancel any in-flight fetch from previous symbol/interval
+    cancelRef.current = true;
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    // Reset for new symbol
+    cancelRef.current = false;
     setLoading(true);
     setCandles([]);
     setLastPrice(null);
     setDataSource(null);
 
+    // Initial fetch then poll on Yahoo cadence (will speed up if Futu connects)
     fetchKlines();
-
-    // Adaptive poll: fast if Futu connected, slow if Yahoo fallback
-    const scheduleNext = () => {
-      timerRef.current = setTimeout(async () => {
-        await fetchKlines();
-        scheduleNext();
-      }, pollMsRef.current);
-    };
-    scheduleNext();
+    timerRef.current = setInterval(fetchKlines, YAHOO_POLL_MS);
 
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      cancelRef.current = true;
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [fetchKlines]);
 
