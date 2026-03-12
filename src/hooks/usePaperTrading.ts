@@ -1,10 +1,8 @@
 /**
  * usePaperTrading — paper trading state hook
  *
- * FIX #5: All paper trades are tagged with [paper] in their notes field.
- * This lets App.tsx filter:
- *   Live journal:  trades.filter(t => !t.notes?.includes('[paper]'))
- *   Paper journal: trades.filter(t =>  t.notes?.includes('[paper]'))
+ * FIX #1: import OpenPosition (was PaperPosition) to match mode.ts
+ * FIX #5: all paper trades tagged [paper] in notes for journal filter
  */
 import { useState, useMemo } from 'react';
 import { PaperAccount, OpenPosition } from '../types/mode';
@@ -37,12 +35,9 @@ export function usePaperTrading(addTrade: (t: Omit<TradeRecord, 'id'>) => void) 
     sl: number,
     tp: number
   ) => {
-    if (account.openPosition) return;           // one position at a time
+    if (account.openPosition) return;     // one position at a time
     if (capital > account.balance) return;
-
-    // quantity = capital / price for stocks; for futures capital = margin so quantity = contracts
     const quantity = price > 0 ? capital / price : 0;
-
     const pos: OpenPosition = {
       symbol, type, entryPrice: price, stopLoss: sl, takeProfit: tp,
       quantity, capitalUsed: capital,
@@ -54,14 +49,11 @@ export function usePaperTrading(addTrade: (t: Omit<TradeRecord, 'id'>) => void) 
   const closePosition = (exitPrice: number) => {
     const pos = account.openPosition;
     if (!pos) return;
-
     const pnl = pos.type === 'LONG'
       ? (exitPrice - pos.entryPrice) * pos.quantity
       : (pos.entryPrice - exitPrice) * pos.quantity;
     const newBalance = account.balance + pos.capitalUsed + pnl;
     const pnlPct     = parseFloat(((pnl / pos.capitalUsed) * 100).toFixed(2));
-
-    // FIX #5: tag note with [paper] so the journal filter works reliably
     addTrade({
       symbol:      pos.symbol,
       type:        pos.type,
@@ -78,7 +70,6 @@ export function usePaperTrading(addTrade: (t: Omit<TradeRecord, 'id'>) => void) 
       closeTime:   Math.floor(Date.now() / 1000),
       notes:       `[paper] Closed @ ${exitPrice}`,
     });
-
     persist({ ...account, balance: newBalance, openPosition: null });
   };
 
@@ -88,8 +79,6 @@ export function usePaperTrading(addTrade: (t: Omit<TradeRecord, 'id'>) => void) 
 
   const pnl    = parseFloat((account.balance - account.initialBalance).toFixed(2));
   const pnlPct = parseFloat(((pnl / account.initialBalance) * 100).toFixed(2));
-
-  // Unrealised P&L placeholder (calculated in PaperTradingPanel from live price)
   const openPnl = useMemo(() => null, [account.openPosition]);
 
   return { account, openPosition, closePosition, resetAccount, pnl, pnlPct, openPnl };
