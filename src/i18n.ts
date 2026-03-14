@@ -24,9 +24,9 @@ export const t = {
   symMHI:          { ZH: '🇭🇰 小型恒指',                   EN: '🇭🇰 Mini HSI' },
   symHSI:          { ZH: '📊 恒指期貨',                    EN: '📊 Full HSI' },
   symHHI:          { ZH: '🇨🇳 國指期貨',                   EN: '🇨🇳 Mini H-Share' },
-  symTencent:      { ZH: '🎮 騰訊',                         EN: '🎮 Tencent' },
-  symHSBC:         { ZH: '🏦 匯豐',                         EN: '🏦 HSBC' },
-  symAlibaba:      { ZH: '🛒 阿里巴巴',                     EN: '🛒 Alibaba' },
+  symTencent:      { ZH: '🎮 騰訊',                         EN: '🎮 Tencent' }, /* ORPHAN — not called via tr() anywhere; keep for future use */
+  symHSBC:         { ZH: '🏦 匯豐',                         EN: '🏦 HSBC' },    /* ORPHAN — not called via tr() anywhere; keep for future use */
+  symAlibaba:      { ZH: '🛒 阿里巴巴',                     EN: '🛒 Alibaba' }, /* ORPHAN — not called via tr() anywhere; keep for future use */
 
   // Contract info labels (Sprint 4 Position Calculator)
   contractSpec:    { ZH: '合約規格',                        EN: 'Contract Spec' },
@@ -41,7 +41,7 @@ export const t = {
   totalCapital:    { ZH: '總資金 (HKD)',                    EN: 'Total Capital (HKD)' },
   totalCapTip:     { ZH: '你用於此合約的總可用資金（港幣）', EN: 'Total capital allocated to this contract (HKD)' },
   riskPct:         { ZH: '每次風險 %',                      EN: 'Risk per Trade %' },
-  riskPctTip:      { ZH: '每次交易願意虧損的資金比例，建議1-3%', EN: 'Max % of capital to risk per trade, suggest 1-3%' },
+  riskPctTip:      { ZH: '每次交易愿意虧損的資金比例，建議1-3%', EN: 'Max % of capital to risk per trade, suggest 1-3%' },
   direction:       { ZH: '方向',                            EN: 'Direction' },
   long:            { ZH: '🟢 做多',                         EN: '🟢 Long' },
   short:           { ZH: '🔴 做空',                         EN: '🔴 Short' },
@@ -53,7 +53,7 @@ export const t = {
   tpTip:           { ZH: '盈虧比3:1目標',                  EN: 'Target R:R 3:1' },
   calcResults:     { ZH: '📐 計算結果',                     EN: '📐 Calculation Results' },
   invested:        { ZH: '名義價值',                        EN: 'Notional Value' },
-  usdtSize:        { ZH: 'HKD 名義倉位',                   EN: 'HKD notional size' },
+  usdtSize:        { ZH: 'HKD 名義倉位',                   EN: 'HKD notional size' }, /* ORPHAN — superseded by inline strings in PositionCalculator */
   maxLoss:         { ZH: '最大虧損 (HKD)',                  EN: 'Max Loss (HKD)' },
   maxGain:         { ZH: '最大盈利 (HKD)',                  EN: 'Max Gain (HKD)' },
   rrRatio:         { ZH: '盈虧比',                          EN: 'R:R Ratio' },
@@ -68,10 +68,10 @@ export const t = {
   addedToJournal:  { ZH: '✅ 已加入交易記錄',              EN: '✅ Added to Journal' },
   capitalPct:      { ZH: '佔資金',                          EN: 'of capital' },
   autoPrice:       { ZH: '自動',                            EN: 'Auto' },
-  defLong1:        { ZH: '(預設 -1%)',                      EN: '(default -1%)' },
-  defShort1:       { ZH: '(預設 +1%)',                      EN: '(default +1%)' },
-  defLong3:        { ZH: '(預設 +3%)',                      EN: '(default +3%)' },
-  defShort3:       { ZH: '(預設 -3%)',                      EN: '(default -3%)' },
+  defLong1:        { ZH: '(預設 -1%)',                      EN: '(default -1%)' }, /* ORPHAN — replaced by dynamic string in PositionCalculator */
+  defShort1:       { ZH: '(預設 +1%)',                      EN: '(default +1%)' }, /* ORPHAN — replaced by dynamic string in PositionCalculator */
+  defLong3:        { ZH: '(預設 +3%)',                      EN: '(default +3%)' }, /* ORPHAN — replaced by dynamic string in PositionCalculator */
+  defShort3:       { ZH: '(預設 -3%)',                      EN: '(default -3%)' }, /* ORPHAN — replaced by dynamic string in PositionCalculator */
 
   // Trade Journal
   journalTitle:    { ZH: '📒 交易記錄 & 績效追蹤',         EN: '📒 Trade Journal & Performance' },
@@ -89,10 +89,13 @@ export const t = {
   tradeDetails:    { ZH: '📋 交易明細',                     EN: '📋 Trade Details' },
   colAsset:        { ZH: '合約',                            EN: 'Contract' },
   colDir:          { ZH: '方向',                            EN: 'Dir' },
+  colOpenTime:     { ZH: '開倉時間',                        EN: 'Opened' },  /* Fix 6: new key for open time column */
   colEntry:        { ZH: '入場',                            EN: 'Entry' },
   colExit:         { ZH: '出場',                            EN: 'Exit' },
   colSL:           { ZH: '止蝕',                            EN: 'S/L' },
   colTP:           { ZH: '止盈',                            EN: 'T/P' },
+  colQty:          { ZH: '數量',                            EN: 'Qty' },           /* Fix 6: new key for quantity column */
+  colMultiplier:   { ZH: '倍數',                            EN: 'Mult.' },          /* Fix 6: new key for multiplier badge column */
   colPnl:          { ZH: '盈虧 (HKD)',                      EN: 'P&L (HKD)' },
   colPct:          { ZH: '回報 %',                          EN: 'Return %' },
   colStatus:       { ZH: '狀態',                            EN: 'Status' },
