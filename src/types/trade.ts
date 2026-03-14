@@ -8,11 +8,12 @@ export interface TradeRecord {
   exitPrice: number | null;     // null = still open
   stopLoss: number;
   takeProfit: number;
-  capitalUsed: number;          // USDT invested
-  quantity: number;             // units bought
+  capitalUsed: number;          // HKD margin committed
+  quantity: number;             // contracts (futures) or shares (stocks)
+  multiplier: number;           // HKD per point per contract (e.g. 10 for MHI, 50 for HSI). 1 for stocks.
   result: TradeResult;
-  pnl: number | null;           // USDT profit/loss, null if open
-  pnlPct: number | null;        // % return
+  pnl: number | null;           // HKD profit/loss, null if open
+  pnlPct: number | null;        // % return on capitalUsed
   openTime: number;             // unix seconds
   closeTime: number | null;
   notes: string;

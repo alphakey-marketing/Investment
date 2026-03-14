@@ -1,12 +1,15 @@
 /**
  * usePaperTrading — paper trading state hook
  *
- * FIX #1: import OpenPosition (was PaperPosition) to match mode.ts
- * FIX #5: all paper trades tagged [paper] in notes for journal filter
+ * FUTURES P&L FIX:
+ *   - quantity = floor(capital / marginEstHKD)  → number of contracts, not capital/price
+ *   - closePosition P&L = (priceDiff) × multiplier × contracts
+ *   - Falls back gracefully to stock formula when multiplier = 1
  */
 import { useState, useMemo } from 'react';
 import { PaperAccount, OpenPosition } from '../types/mode';
 import { TradeRecord } from '../types/trade';
+import { FutuSymbol, CONTRACT_SPECS } from '../types/futu';
 
 const STORAGE_KEY = 'paper_account_v2';
 
@@ -37,7 +40,18 @@ export function usePaperTrading(addTrade: (t: Omit<TradeRecord, 'id'>) => void) 
   ) => {
     if (account.openPosition) return;     // one position at a time
     if (capital > account.balance) return;
-    const quantity = price > 0 ? capital / price : 0;
+
+    const spec   = CONTRACT_SPECS[symbol as FutuSymbol];
+    const isFut  = spec?.isFutures ?? false;
+    const mult   = spec?.multiplier ?? 1;
+    const margin = spec?.marginEstHKD ?? 0;
+
+    // For futures: quantity = number of contracts (already chosen by UI via capitalForOpen)
+    // For stocks:  quantity = capital / price
+    const quantity = isFut
+      ? (margin > 0 ? Math.max(1, Math.floor(capital / margin)) : 1)
+      : (price > 0 ? capital / price : 0);
+
     const pos: OpenPosition = {
       symbol, type, entryPrice: price, stopLoss: sl, takeProfit: tp,
       quantity, capitalUsed: capital,
@@ -49,11 +63,21 @@ export function usePaperTrading(addTrade: (t: Omit<TradeRecord, 'id'>) => void) 
   const closePosition = (exitPrice: number) => {
     const pos = account.openPosition;
     if (!pos) return;
+
+    const spec = CONTRACT_SPECS[pos.symbol as FutuSymbol];
+    const mult = spec?.multiplier ?? 1;
+
+    // Futures: P&L = point difference × HKD-per-point × contracts
+    // Stocks:  P&L = price difference × shares  (multiplier = 1)
     const pnl = pos.type === 'LONG'
-      ? (exitPrice - pos.entryPrice) * pos.quantity
-      : (pos.entryPrice - exitPrice) * pos.quantity;
+      ? (exitPrice - pos.entryPrice) * mult * pos.quantity
+      : (pos.entryPrice - exitPrice) * mult * pos.quantity;
+
     const newBalance = account.balance + pos.capitalUsed + pnl;
-    const pnlPct     = parseFloat(((pnl / pos.capitalUsed) * 100).toFixed(2));
+    const pnlPct     = pos.capitalUsed > 0
+      ? parseFloat(((pnl / pos.capitalUsed) * 100).toFixed(2))
+      : 0;
+
     addTrade({
       symbol:      pos.symbol,
       type:        pos.type,
@@ -63,6 +87,7 @@ export function usePaperTrading(addTrade: (t: Omit<TradeRecord, 'id'>) => void) 
       takeProfit:  pos.takeProfit,
       capitalUsed: pos.capitalUsed,
       quantity:    pos.quantity,
+      multiplier:  mult,
       result:      pnl >= 0 ? 'WIN' : 'LOSS',
       pnl:         parseFloat(pnl.toFixed(2)),
       pnlPct,
@@ -79,7 +104,8 @@ export function usePaperTrading(addTrade: (t: Omit<TradeRecord, 'id'>) => void) 
 
   const pnl    = parseFloat((account.balance - account.initialBalance).toFixed(2));
   const pnlPct = parseFloat(((pnl / account.initialBalance) * 100).toFixed(2));
-  const openPnl = useMemo(() => null, [account.openPosition]);
+  // openPnl is computed in PaperTradingPanel directly (needs lastPrice)
+  const openPnl = useMemo(() => null, []);
 
   return { account, openPosition, closePosition, resetAccount, pnl, pnlPct, openPnl };
 }

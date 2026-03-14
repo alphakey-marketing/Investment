@@ -6,8 +6,10 @@
  *   2. Yahoo Finance via allorigins.win            (primary CORS proxy)
  *   3. Yahoo Finance via corsproxy.io              (backup CORS proxy, auto-retry)
  *
- * UAT FIX: dual CORS proxy with automatic retry so HK.00005 and other
- * individual stocks don't show "Failed to fetch" when allorigins is down.
+ * INTERVAL BUG FIX:
+ *   4h was incorrectly mapped to Yahoo '1d'. Yahoo does not support a native 4h interval.
+ *   Fix: map 4h → '1h' on Yahoo (closest available) with a 30d range so we get ~120 bars.
+ *   The Futu proxy supports true 4h and is always tried first.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Candle } from '../types/binance';
@@ -28,11 +30,21 @@ async function fetchFromFutuProxy(symbol: string, interval: HKInterval, limit: n
 }
 
 // ── Yahoo Finance ───────────────────────────────────────────────────────
+// Yahoo does not have a native 4h bar. We fall back to 1h bars (closest).
+// The Futu proxy always takes priority for 4h anyway.
 const YAHOO_INTERVAL_MAP: Record<HKInterval, string> = {
-  '5m': '5m', '15m': '15m', '1h': '60m', '4h': '1d', '1d': '1d',
+  '5m':  '5m',
+  '15m': '15m',
+  '1h':  '60m',
+  '4h':  '60m',   // FIX: was '1d' — now 1h bars (Yahoo has no native 4h)
+  '1d':  '1d',
 };
 const YAHOO_RANGE_MAP: Record<HKInterval, string> = {
-  '5m': '5d', '15m': '10d', '1h': '60d', '4h': '1y', '1d': '2y',
+  '5m':  '5d',
+  '15m': '10d',
+  '1h':  '60d',
+  '4h':  '30d',   // FIX: was '1y' — 30d of 1h bars gives ~120 bars (enough for MA60)
+  '1d':  '2y',
 };
 
 // Two CORS proxies — try primary first, fall back to secondary
