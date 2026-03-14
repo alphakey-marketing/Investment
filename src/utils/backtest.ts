@@ -1,44 +1,48 @@
 /**
  * backtest.ts — SMA + Price-level strategy backtester
  *
- * FUTURES P&L FIX:
- *   PnL per trade = (exitPrice - entryPrice) × multiplier × contracts
- *   NOT a percentage of capitalPerTrade.
+ * Fix 4 — HKEX session filter:
+ *   Entry signals are now gated by isHKTradingHours() — identical to live
+ *   detectSignal() behaviour. Candles in the dead zone (03:00–09:15 HKT),
+ *   on weekends (isHKWeekend), or in the lunch break (12:00–13:00 HKT) are
+ *   skipped for entries. Exits are NOT filtered — a position can be stopped
+ *   out at any hour once open.
  *
- *   - multiplier : HKD per index point per contract (10 for MHI, 50 for HSI/HHI)
- *   - contracts  : number of contracts traded per signal
- *   - SL/TP are still expressed as % of price (for signal detection)
- *   - totalPnlPct is computed as totalPnl / (contracts × multiplier × firstEntryPrice)
- *     so it represents return on the notional value of 1 lot, not on margin
+ * Fix 5 — Commission deduction:
+ *   Each round-trip deducts commissionPerRound (default HK$80) from net PnL.
+ *   END trades (position still open at last candle) deduct half (entry-side only).
+ *   All stats — winRate, profitFactor, maxDrawdown — are calculated on NET PnL.
  *
- * SMA stays as-is (user's strategy is SMA + price level).
+ * SMA stays as-is (strategy is SMA + price level).
  */
 import { Candle } from '../types/binance';
 import { BacktestResult, BacktestTrade } from '../types/mode';
 import { getLatestSMA } from './ma';
+import { isHKTradingHours, isHKWeekend } from './hkSession';
 
 export function runBacktest(
-  candles:       Candle[],
-  ma1Period      = 20,
-  ma2Period      = 60,
-  contracts      = 1,
-  multiplier     = 10,   // HKD per pt per contract — 10=MHI, 50=HSI/HHI
-  slPct          = 0.005,
-  tpPct          = 0.015,
-  proximityPct   = 0.005
+  candles:                Candle[],
+  ma1Period               = 20,
+  ma2Period               = 60,
+  contracts               = 1,
+  multiplier              = 10,    // HKD per pt per contract — 10=MHI, 50=HSI/HHI
+  slPct                   = 0.005,
+  tpPct                   = 0.015,
+  proximityPct            = 0.005,
+  commissionPerRound      = 80,    // HKD per round-trip (entry + exit)
+  includeFuturesEvening   = true   // mirror live signal setting
 ): BacktestResult {
   const trades: BacktestTrade[] = [];
-  let inTrade     = false;
+  let inTrade      = false;
   let currentTrade: Partial<BacktestTrade> | null = null;
-  let slPrice     = 0;
-  let tpPrice     = 0;
+  let slPrice      = 0;
+  let tpPrice      = 0;
 
-  let peak        = 0;
-  let maxDrawdown = 0;
-  let runningPnl  = 0;
-
-  // Keep a reference price for % return display (first entry)
+  let peak         = 0;
+  let maxDrawdown  = 0;
+  let runningPnl   = 0;
   let firstEntryPrice = 0;
+  let totalCommission = 0;
 
   for (let i = Math.max(ma1Period, ma2Period) + 1; i < candles.length; i++) {
     const slice = candles.slice(0, i + 1);
@@ -48,42 +52,43 @@ export function runBacktest(
     const ma2   = getLatestSMA(slice, ma2Period);
     if (!ma1 || !ma2) continue;
 
-    // ── Exit check ────────────────────────────────────────────────────────
+    // ── Exit check (no session filter — exits can happen any time) ─────────
     if (inTrade && currentTrade) {
       let exitPrice:  number | null = null;
       let exitReason: 'TP' | 'SL' | null = null;
 
       if (currentTrade.type === 'LONG') {
-        if (c.low  <= slPrice) { exitPrice = slPrice; exitReason = 'SL'; }
+        if (c.low  <= slPrice) { exitPrice = slPrice;  exitReason = 'SL'; }
         else if (c.high >= tpPrice) { exitPrice = tpPrice; exitReason = 'TP'; }
       } else {
-        if (c.high >= slPrice) { exitPrice = slPrice; exitReason = 'SL'; }
+        if (c.high >= slPrice) { exitPrice = slPrice;  exitReason = 'SL'; }
         else if (c.low  <= tpPrice) { exitPrice = tpPrice; exitReason = 'TP'; }
       }
 
       if (exitPrice != null && exitReason) {
-        // FUTURES-CORRECT P&L
-        const ptDiff = currentTrade.type === 'LONG'
+        const ptDiff  = currentTrade.type === 'LONG'
           ? exitPrice - currentTrade.entryPrice!
           : currentTrade.entryPrice! - exitPrice;
-        const pnl = ptDiff * multiplier * contracts;
+        const grossPnl  = ptDiff * multiplier * contracts;
+        // Fix 5: deduct full round-trip commission
+        const netPnl    = grossPnl - commissionPerRound;
+        totalCommission += commissionPerRound;
 
-        // pnlPct as % of single-contract notional at entry (informational)
         const notional = currentTrade.entryPrice! * multiplier * contracts;
         const pnlPct   = notional > 0
-          ? parseFloat(((pnl / notional) * 100).toFixed(2))
+          ? parseFloat(((netPnl / notional) * 100).toFixed(2))
           : 0;
 
         const finished: BacktestTrade = {
           ...currentTrade as BacktestTrade,
-          exitTime: c.time,
+          exitTime:   c.time,
           exitPrice,
-          pnl:      parseFloat(pnl.toFixed(2)),
+          pnl:        parseFloat(netPnl.toFixed(2)),
           pnlPct,
           exitReason,
         };
         trades.push(finished);
-        runningPnl += pnl;
+        runningPnl += netPnl;
         if (runningPnl > peak) peak = runningPnl;
         const dd = peak - runningPnl;
         if (dd > maxDrawdown) maxDrawdown = dd;
@@ -92,8 +97,12 @@ export function runBacktest(
       }
     }
 
-    // ── Entry signal ──────────────────────────────────────────────────────
+    // ── Entry signal (Fix 4: session + weekend filter) ──────────────────
     if (!inTrade) {
+      // Skip entries outside HKEX trading hours or on weekends
+      if (!isHKTradingHours(c.time, includeFuturesEvening)) continue;
+      if (isHKWeekend(c.time)) continue; // belt-and-suspenders (isHKTradingHours covers this too)
+
       const price   = c.close;
       const nearMA1 = Math.abs(price - ma1) / ma1 < proximityPct;
       const nearMA2 = Math.abs(price - ma2) / ma2 < proximityPct;
@@ -120,20 +129,24 @@ export function runBacktest(
     }
   }
 
-  // ── Close any open trade at last candle ───────────────────────────────
+  // ── Close open trade at last candle ────────────────────────────────
   if (inTrade && currentTrade) {
-    const last   = candles[candles.length - 1];
-    const ptDiff = currentTrade.type === 'LONG'
+    const last    = candles[candles.length - 1];
+    const ptDiff  = currentTrade.type === 'LONG'
       ? last.close - currentTrade.entryPrice!
       : currentTrade.entryPrice! - last.close;
-    const pnl      = ptDiff * multiplier * contracts;
-    const notional = currentTrade.entryPrice! * multiplier * contracts;
-    const pnlPct   = notional > 0 ? parseFloat(((pnl / notional) * 100).toFixed(2)) : 0;
+    const grossPnl  = ptDiff * multiplier * contracts;
+    // Fix 5: END trades pay half commission (entry-side only, exit not yet taken)
+    const halfComm  = commissionPerRound / 2;
+    const netPnl    = grossPnl - halfComm;
+    totalCommission += halfComm;
+    const notional  = currentTrade.entryPrice! * multiplier * contracts;
+    const pnlPct    = notional > 0 ? parseFloat(((netPnl / notional) * 100).toFixed(2)) : 0;
     trades.push({
       ...currentTrade as BacktestTrade,
       exitTime:   last.time,
       exitPrice:  last.close,
-      pnl:        parseFloat(pnl.toFixed(2)),
+      pnl:        parseFloat(netPnl.toFixed(2)),
       pnlPct,
       exitReason: 'END',
     });
@@ -145,19 +158,20 @@ export function runBacktest(
   const totalWin  = wins.reduce((s, t) => s + t.pnl, 0);
   const totalLoss = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
 
-  // totalPnlPct: return relative to notional of 1 contract at first entry
   const refNotional = firstEntryPrice > 0 ? firstEntryPrice * multiplier * contracts : 1;
   const totalPnlPct = parseFloat(((totalPnl / refNotional) * 100).toFixed(1));
 
   return {
-    totalSignals: trades.length,
-    wins:         wins.length,
-    losses:       losses.length,
-    winRate:      trades.length > 0 ? parseFloat(((wins.length / trades.length) * 100).toFixed(1)) : 0,
-    totalPnl:     parseFloat(totalPnl.toFixed(2)),
+    totalSignals:    trades.length,
+    wins:            wins.length,
+    losses:          losses.length,
+    winRate:         trades.length > 0 ? parseFloat(((wins.length / trades.length) * 100).toFixed(1)) : 0,
+    totalPnl:        parseFloat(totalPnl.toFixed(2)),
     totalPnlPct,
-    maxDrawdown:  parseFloat(maxDrawdown.toFixed(2)),
-    profitFactor: totalLoss > 0 ? parseFloat((totalWin / totalLoss).toFixed(2)) : totalWin > 0 ? 99 : 0,
+    maxDrawdown:     parseFloat(maxDrawdown.toFixed(2)),
+    profitFactor:    totalLoss > 0 ? parseFloat((totalWin / totalLoss).toFixed(2)) : totalWin > 0 ? 99 : 0,
     trades,
+    // Fix 5: expose commission total so BacktestPanel can display it
+    totalCommission: parseFloat(totalCommission.toFixed(2)),
   };
 }

@@ -6,33 +6,55 @@
  *   Afternoon: 13:00 – 16:30 HKT
  *   Evening:   17:15 – 03:00 HKT (next day) — futures only
  *
- * Used by detectSignal() to suppress signals outside trading hours.
+ * Fix 8: isHKTradingHours() now returns false on weekends (Sat/Sun).
+ * Yahoo Finance occasionally returns weekend timestamps for some indices;
+ * without this check a signal could fire on Saturday/Sunday data.
+ *
+ * Used by detectSignal() and backtest.ts to suppress off-hours signals.
  */
 
-export interface HKTTime { h: number; m: number }
+export interface HKTTime { h: number; m: number; dayOfWeek: number }
 
-/** Convert a Unix timestamp (seconds) to HKT hour & minute */
+/** Convert a Unix timestamp (seconds) to HKT hour, minute, and day-of-week */
 export function toHKT(unixSec: number): HKTTime {
   const d = new Date(unixSec * 1000);
-  // HKT = UTC+8
-  const totalMinutes = d.getUTCHours() * 60 + d.getUTCMinutes() + 480;
+  // HKT = UTC+8: add 480 minutes to UTC
+  const utcMins     = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const hktMins     = utcMins + 480;
+  const hktDay      = d.getUTCDay(); // 0=Sun, 1=Mon … 6=Sat (UTC, close enough for HKT)
+  // If hktMins >= 1440 we've wrapped into the next day
+  const overflowDay = hktMins >= 1440 ? (hktDay + 1) % 7 : hktDay;
   return {
-    h: Math.floor((totalMinutes % 1440) / 60),
-    m: totalMinutes % 60,
+    h:         Math.floor((hktMins % 1440) / 60),
+    m:         hktMins % 60,
+    dayOfWeek: overflowDay,
   };
 }
 
 function toMins(h: number, m: number) { return h * 60 + m; }
 
 /**
+ * Returns true if the given Unix timestamp is a HKT weekend day (Sat or Sun).
+ * Used by backtest.ts to filter out weekend candles before signal detection.
+ */
+export function isHKWeekend(unixSec: number): boolean {
+  const { dayOfWeek } = toHKT(unixSec);
+  return dayOfWeek === 0 || dayOfWeek === 6;
+}
+
+/**
  * Returns true if the given Unix timestamp falls within any HKEX trading session.
- * @param unixSec  — candle close timestamp in seconds
+ *
+ * @param unixSec               — candle close timestamp in seconds
  * @param includeFuturesEvening — include the 17:15–03:00 evening session (futures only)
  */
 export function isHKTradingHours(
   unixSec: number,
   includeFuturesEvening = true
 ): boolean {
+  // Fix 8: reject weekends before checking hours
+  if (isHKWeekend(unixSec)) return false;
+
   const { h, m } = toHKT(unixSec);
   const mins = toMins(h, m);
 

@@ -6,8 +6,6 @@ export interface PaperAccount {
   openPosition:   OpenPosition | null;
 }
 
-// FIX #1: renamed PaperPosition → OpenPosition to match usePaperTrading import
-// FIX #3: removed stale 'id' field (never set) and 'USDT' comment — currency is HKD
 export interface OpenPosition {
   symbol:      string;
   type:        'LONG' | 'SHORT';
@@ -20,15 +18,16 @@ export interface OpenPosition {
 }
 
 export interface BacktestResult {
-  totalSignals: number;
-  wins:         number;
-  losses:       number;
-  winRate:      number;
-  totalPnl:     number;
-  totalPnlPct:  number;
-  maxDrawdown:  number;
-  profitFactor: number;
-  trades:       BacktestTrade[];
+  totalSignals:    number;
+  wins:            number;
+  losses:          number;
+  winRate:         number;
+  totalPnl:        number;  // net of commission
+  totalPnlPct:     number;
+  maxDrawdown:     number;  // net of commission
+  profitFactor:    number;  // net of commission
+  trades:          BacktestTrade[];
+  totalCommission: number;  // Fix 5: total commission paid across all trades
 }
 
 export interface BacktestTrade {
@@ -37,7 +36,7 @@ export interface BacktestTrade {
   exitTime:   number;
   entryPrice: number;
   exitPrice:  number;
-  pnl:        number;
+  pnl:        number;        // net of commission
   pnlPct:     number;
   exitReason: 'TP' | 'SL' | 'END';
 }

@@ -13,26 +13,25 @@ interface Props {
   lang:      Lang;
 }
 
-function fmt2(n: number) { return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function fmtHKD(n: number) {
   return `HK$${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 function fmtTime(unix: number) {
-  return new Date(unix * 1000).toLocaleString('en-GB', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(unix * 1000).toLocaleString('en-GB', {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  });
 }
 
 // ── Interpretation helper ─────────────────────────────────────────────────────
-function getInterpretation(result: BacktestResult, rr: number, lang: Lang) {
+function getInterpretation(result: BacktestResult, rr: number, commPerRound: number, lang: Lang) {
   const isEN = lang === 'EN';
-  const { winRate, totalPnl, profitFactor, totalSignals } = result;
-
+  const { winRate, totalPnl, profitFactor, totalSignals, totalCommission } = result;
   if (totalSignals === 0) return null;
 
   const breakEvenWinRate = Math.round((1 / (1 + rr)) * 100);
   const isProfitable = totalPnl > 0;
   const isViable     = winRate >= breakEvenWinRate;
   const isPFStrong   = profitFactor >= 1.5;
-
   const verdictColor = isProfitable && isViable ? '#00c853' : isProfitable ? '#f0b90b' : '#ff9800';
   const verdictIcon  = isProfitable && isViable ? '🟢' : isProfitable ? '🟡' : '🟠';
 
@@ -41,59 +40,73 @@ function getInterpretation(result: BacktestResult, rr: number, lang: Lang) {
   if (winRate >= breakEvenWinRate + 10) {
     lines.push({ icon: '✅', color: '#00c853',
       text: isEN
-        ? `Win rate ${winRate}% is well above break-even (${breakEvenWinRate}% needed for ${rr}:1 R:R). The strategy is mathematically profitable long-term.`
-        : `勝率 ${winRate}% 遠高於保本線（${rr}:1 風報比只需 ${breakEvenWinRate}%）。此策略長期數學期望值為正。`,
+        ? `Win rate ${winRate}% is well above break-even (${breakEvenWinRate}% needed for ${rr}:1 R:R). Profitable long-term even after commission.`
+        : `勝率 ${winRate}% 遠高於保本線（${rr}:1 風報比只需 ${breakEvenWinRate}%）。扣除會費後長期仍有獲利。`,
     });
   } else if (winRate >= breakEvenWinRate) {
     lines.push({ icon: '⚠️', color: '#f0b90b',
       text: isEN
-        ? `Win rate ${winRate}% is just above break-even (${breakEvenWinRate}% needed). Profitable, but only by a small margin — stick to the rules every trade.`
-        : `勝率 ${winRate}% 僅略高於保本線（需 ${breakEvenWinRate}%）。有獲利，但空間不大，每筆交易都必須嚴守紀律。`,
+        ? `Win rate ${winRate}% is just above break-even (${breakEvenWinRate}% needed). Marginal after commission — stick to rules every trade.`
+        : `勝率 ${winRate}% 僅略高於保本線（需 ${breakEvenWinRate}%）。扣除會費後剩餘空間不大。`,
     });
   } else {
     lines.push({ icon: '❌', color: '#ff9800',
       text: isEN
-        ? `Win rate ${winRate}% is BELOW break-even of ${breakEvenWinRate}% for this ${rr}:1 R:R. Consider reviewing stop-loss/take-profit levels.`
-        : `勝率 ${winRate}% 低於 ${rr}:1 風報比所需的保本線 ${breakEvenWinRate}%。建議重新審視止蝕／止盈設定。`,
+        ? `Win rate ${winRate}% is BELOW break-even of ${breakEvenWinRate}% (after commission). Review SL/TP or increase R:R.`
+        : `勝率 ${winRate}% 低於保本線 ${breakEvenWinRate}%（扣除會費後）。建議調整止蝕⼀止盈或提高風報比。`,
     });
   }
 
   if (isPFStrong) {
     lines.push({ icon: '✅', color: '#00c853',
       text: isEN
-        ? `Profit Factor ${result.profitFactor} (≥1.5 is strong). For every HK$1 lost, the strategy earns HK$${result.profitFactor}.`
-        : `盈利因子 ${result.profitFactor}（≥1.5 為強勁）。每虧損 HK$1，策略可賺 HK$${result.profitFactor}。`,
+        ? `Profit Factor ${profitFactor} (≥1.5 is strong, net of HK$${commPerRound}/round commission). Strategy has a durable edge.`
+        : `盈利因子 ${profitFactor}（≥1.5 為強勁，已扣 HK$${commPerRound}/回 會費）。策略具備持續優勢。`,
     });
   } else if (profitFactor >= 1.0) {
     lines.push({ icon: '⚠️', color: '#f0b90b',
       text: isEN
-        ? `Profit Factor ${result.profitFactor} (above 1 = profitable, but aim for 1.5+). Marginal edge — needs consistent execution.`
-        : `盈利因子 ${result.profitFactor}（>1 代表獲利，但目標應達 1.5+）。優勢有限，需要一致執行。`,
+        ? `Profit Factor ${profitFactor} (>1 after commission = still profitable, but aim for 1.5+).`
+        : `盈利因子 ${profitFactor}（扣會費後 >1 仍獲利，但目標應達 1.5+）。`,
     });
   } else {
     lines.push({ icon: '❌', color: '#ff1744',
       text: isEN
-        ? `Profit Factor ${result.profitFactor} is below 1.0 — the strategy is losing money overall. Consider different parameters.`
-        : `盈利因子 ${result.profitFactor} 低於 1.0 — 策略整體虧損。建議調整參數。`,
+        ? `Profit Factor ${profitFactor} is below 1.0 after commission — losing strategy. Adjust parameters or increase contracts to offset commission drag.`
+        : `盈利因子 ${profitFactor} 扣會費後低於 1.0 — 整體虧損。建議調整參數或增加合約數以分播會費。`,
+    });
+  }
+
+  // Commission drag warning
+  if (totalCommission > 0 && totalSignals > 0) {
+    const commPctOfGross = totalPnl + totalCommission > 0
+      ? parseFloat(((totalCommission / (Math.abs(totalPnl) + totalCommission)) * 100).toFixed(1))
+      : 0;
+    lines.push({ icon: '💸', color: '#888',
+      text: isEN
+        ? `Total commission paid: ${fmtHKD(totalCommission)} across ${totalSignals} trades (${commPctOfGross}% of gross). Commission is ${fmtHKD(commPerRound)}/round-trip.`
+        : `總會費：${fmtHKD(totalCommission)}，共 ${totalSignals} 筆交易（佔毛益 ${commPctOfGross}%）。每回會費 ${fmtHKD(commPerRound)}。`,
     });
   }
 
   if (totalSignals < 15) {
     lines.push({ icon: '⚠️', color: '#888',
       text: isEN
-        ? `Only ${totalSignals} trades — this is a small sample. Load more candles for a more reliable result.`
-        : `只有 ${totalSignals} 筆交易 — 樣本較小。請載入更多K線以獲得更可靠的結果。`,
+        ? `Only ${totalSignals} trades — small sample. Load more candles for reliable results.`
+        : `只有 ${totalSignals} 筆交易 — 樣本較小。請載入更多K線。`,
     });
   }
 
   lines.push({ icon: '💡', color: '#29b6f6',
     text: isEN
-      ? `Key insight: Even a 40% win-rate strategy is profitable with a 3:1 R:R. What matters most is ALWAYS using your stop loss on every trade — never skip it.`
-      : `重點認知：即使勝率只有 40%，只要風報比達 3:1 就能獲利。最重要的是每筆交易都必須設置止蝕——絕不跳過。`,
+      ? `Key insight: Commission drag is real — HK$${commPerRound} per trade on MHI needs ${Math.ceil(commPerRound / (multiplierHint(10)))} extra pts just to break even. Use wider TP to offset.`
+      : `重點：會費影響真實存在——MHI每筆 HK$${commPerRound} 會費需額外 ${Math.ceil(commPerRound / 10)} 點才能扣平。可考慮擴大止盈目標。`,
   });
 
   return { verdictIcon, verdictColor, isProfitable, isViable, lines };
 }
+
+function multiplierHint(mult: number) { return mult; }
 
 export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, lang }: Props) {
   const spec       = CONTRACT_SPECS[symbol as FutuSymbol];
@@ -101,16 +114,18 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
   const multiplier = spec?.multiplier ?? 1;
 
   const [contractsInput, setContractsInput] = useState('1');
-  const [slPct,          setSlPct]          = useState(isFutures ? '0.5' : '1');    // % for signal detection
+  const [slPct,          setSlPct]          = useState(isFutures ? '0.5' : '1');
   const [tpPct,          setTpPct]          = useState(isFutures ? '1.5' : '3');
+  // Fix 5: commission input, default HK$80 for MHI, HK$120 for HSI/HHI
+  const [commInput,      setCommInput]      = useState(multiplier >= 50 ? '120' : '80');
   const [ran,            setRan]            = useState(false);
   const [result,         setResult]         = useState<BacktestResult | null>(null);
   const isEN = lang === 'EN';
 
-  const rrRatio   = parseFloat(tpPct) / parseFloat(slPct) || 3;
-  const contracts = Math.max(1, parseInt(contractsInput) || 1);
+  const rrRatio    = parseFloat(tpPct)  / parseFloat(slPct)  || 3;
+  const contracts  = Math.max(1, parseInt(contractsInput) || 1);
+  const commPerRound = Math.max(0, parseFloat(commInput) || 0);
 
-  // Estimated margin for info display
   const marginPerContract = spec?.marginEstHKD ?? 0;
   const totalMargin       = contracts * marginPerContract;
 
@@ -119,8 +134,11 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
     const r = runBacktest(
       candles, ma1Period, ma2Period,
       contracts, multiplier,
-      parseFloat(slPct)  / 100 || 0.005,
-      parseFloat(tpPct)  / 100 || 0.015,
+      parseFloat(slPct) / 100 || 0.005,
+      parseFloat(tpPct) / 100 || 0.015,
+      0.005,          // proximityPct (fixed)
+      commPerRound,   // Fix 5
+      true,           // includeFuturesEvening (Fix 4)
     );
     setResult(r); setRan(true);
   };
@@ -134,18 +152,18 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
     }, []);
   }, [result]);
 
-  const interp = result ? getInterpretation(result, rrRatio, lang) : null;
+  const interp = result ? getInterpretation(result, rrRatio, commPerRound, lang) : null;
 
-  // SL / TP in points for display hint
-  const sampleEntry  = candles[candles.length - 1]?.close ?? 20000;
-  const slPts        = Math.round(sampleEntry * (parseFloat(slPct) / 100));
-  const tpPts        = Math.round(sampleEntry * (parseFloat(tpPct) / 100));
-  const slHKD        = slPts * multiplier * contracts;
-  const tpHKD        = tpPts * multiplier * contracts;
+  const sampleEntry = candles[candles.length - 1]?.close ?? 20000;
+  const slPts = Math.round(sampleEntry * (parseFloat(slPct) / 100));
+  const tpPts = Math.round(sampleEntry * (parseFloat(tpPct) / 100));
+  const slHKD = slPts * multiplier * contracts;
+  const tpHKD = tpPts * multiplier * contracts;
 
   return (
     <div style={styles.wrapper}>
-      <div style={styles.title}>{tr('backtestTitle', lang)}</div>
+      <div style={styles.title}>{‘🔍 回歸測試’ /* tr('backtestTitle', lang) */}</div>
+
       <div style={styles.desc}>
         {tr('backtestDesc1', lang)} {candles.length} {tr('backtestDesc2', lang)}
       </div>
@@ -153,15 +171,19 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
       {isFutures && (
         <div style={styles.futuresNote}>
           {isEN
-            ? `📐 Futures mode — P&L = pts × HK$${multiplier}/pt × contracts. Each trade uses real HKD point math.`
-            : `📐 期貨模式 — 盈虧 = 點數 × HK$${multiplier}/點 × 合約數。每筆交易以真實港幣計算。`}
+            ? `📐 Futures mode — P&L = pts × HK$${multiplier}/pt × contracts. Session filter active (no dead-zone signals). Commission deducted.`
+            : `📐 期貨模式 — 盈虧 = 點數 × HK$${multiplier}/點 × 合約數。已套用交易時段過濾，會費已扣除。`}
         </div>
       )}
 
       <div style={styles.inputHint}>
         {isEN
-          ? `💡 Defaults: ${isFutures ? `1 contract, SL=${slPct}% (≈${slPts}pts = -HK$${slHKD.toLocaleString()}), TP=${tpPct}% (≈${tpPts}pts = +HK$${tpHKD.toLocaleString()})` : '2% risk, 1% SL, 3% TP (3:1 R:R)'}. Click Run Backtest.`
-          : `💡 預設：${isFutures ? `1張合約，止蝕=${slPct}%（約${slPts}點 = -HK$${slHKD.toLocaleString()}），止盈=${tpPct}%（約${tpPts}點 = +HK$${tpHKD.toLocaleString()}）` : '2%風險、1%止蝕、3%止盈（3:1風報比）'}。直接點擊執行。`}
+          ? `💡 Defaults: ${isFutures
+              ? `1 contract, SL=${slPct}% (≈${slPts}pts = -${fmtHKD(slHKD)}), TP=${tpPct}% (≈${tpPts}pts = +${fmtHKD(tpHKD)}), commission ${fmtHKD(commPerRound)}/round`
+              : '1% SL, 3% TP (3:1 R:R)'}. Click Run Backtest.`
+          : `💡 預設：${isFutures
+              ? `1張合約，止蝕=${slPct}%（約${slPts}點=-${fmtHKD(slHKD)}），止盈=${tpPct}%（約${tpPts}點=+${fmtHKD(tpHKD)}），會費${fmtHKD(commPerRound)}/回`
+              : '1%止蝕、3%止盈（3:1風報比）'}。直接點擊執行。`}
       </div>
 
       <div style={styles.grid}>
@@ -171,28 +193,37 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
             : (isEN ? 'Capital per trade' : '每次交易資本')}
           hint={isFutures
             ? (isEN
-                ? `Margin locked: HK$${totalMargin.toLocaleString()} · P&L per 1pt: HK$${multiplier * contracts}`
-                : `鎖定保證金：HK$${totalMargin.toLocaleString()} · 每1點盈虧：HK$${multiplier * contracts}`)
-            : (isEN ? 'How much HK$ you invest per trade' : '每次交易投入多少資金')}
+                ? `Margin: ${fmtHKD(totalMargin)} · P&L per 1pt: HK$${multiplier * contracts}`
+                : `保證金: ${fmtHKD(totalMargin)} · 每1點: HK$${multiplier * contracts}`)
+            : (isEN ? 'HKD per trade' : '每筆HKD')}
         >
           <input style={styles.input} type="number" min="1" value={contractsInput}
             onChange={(e) => setContractsInput(e.target.value)} />
         </Field>
+
         <Field
           label={isEN ? 'Stop Loss %' : '止蝕 %'}
-          hint={isEN
-            ? `≈ ${slPts} pts = -HK$${slHKD.toLocaleString()} per trade`
-            : `約 ${slPts} 點 = 每筆 -HK$${slHKD.toLocaleString()}`}
+          hint={isEN ? `≈ ${slPts} pts = -${fmtHKD(slHKD)} per trade` : `約 ${slPts} 點 = -${fmtHKD(slHKD)}/筆`}
         >
           <input style={styles.input} type="number" value={slPct} onChange={(e) => setSlPct(e.target.value)} />
         </Field>
+
         <Field
-          label={isEN ? `Take Profit % (R:R = ${rrRatio.toFixed(1)}:1)` : `止盈 %（風報比 = ${rrRatio.toFixed(1)}:1）`}
-          hint={isEN
-            ? `≈ ${tpPts} pts = +HK$${tpHKD.toLocaleString()} per trade`
-            : `約 ${tpPts} 點 = 每筆 +HK$${tpHKD.toLocaleString()}`}
+          label={isEN ? `Take Profit % (R:R=${rrRatio.toFixed(1)}:1)` : `止盈 %（風報比=${rrRatio.toFixed(1)}:1）`}
+          hint={isEN ? `≈ ${tpPts} pts = +${fmtHKD(tpHKD)} per trade` : `約 ${tpPts} 點 = +${fmtHKD(tpHKD)}/筆`}
         >
           <input style={styles.input} type="number" value={tpPct} onChange={(e) => setTpPct(e.target.value)} />
+        </Field>
+
+        {/* Fix 5: Commission input */}
+        <Field
+          label={isEN ? 'Commission HKD/round' : '會費 HKD/回'}
+          hint={isEN
+            ? `Entry + exit fees. MHI ≈ HK$80, HSI/HHI ≈ HK$120. Deducted from each trade P&L.`
+            : `開倉+平倉會費。MHI ≈ HK$80，HSI/HHI ≈ HK$120。從每筆P&L扣除。`}
+        >
+          <input style={styles.input} type="number" min="0" value={commInput}
+            onChange={(e) => setCommInput(e.target.value)} />
         </Field>
       </div>
 
@@ -204,14 +235,23 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
         <>
           <div style={styles.sectionTitle}>{tr('backtestResults', lang)}</div>
           <div style={styles.summaryGrid}>
-            <SBox label={tr('btTotalTrades', lang)} value={result.totalSignals.toString()} />
-            <SBox label={tr('btWinRate', lang)} value={`${result.winRate}%`} color={result.winRate >= 50 ? '#00c853' : '#ff9800'} />
-            <SBox label={tr('btTotalPnl', lang)} value={`${result.totalPnl >= 0 ? '+' : ''}${fmtHKD(result.totalPnl)}`} color={result.totalPnl >= 0 ? '#00c853' : '#ff1744'} />
-            <SBox label={tr('btTotalReturn', lang)} value={`${result.totalPnlPct >= 0 ? '+' : ''}${result.totalPnlPct}%`} color={result.totalPnlPct >= 0 ? '#00c853' : '#ff1744'} />
-            <SBox label={tr('btProfitFactor', lang)} value={result.profitFactor.toString()} color={result.profitFactor >= 1.5 ? '#00c853' : '#ff9800'} tooltip={tr('btPFTip', lang)} />
-            <SBox label={tr('btMaxDD', lang)} value={`-${fmtHKD(result.maxDrawdown)}`} color="#ff9800" tooltip={tr('btMaxDDTip', lang)} />
-            <SBox label={tr('btWins', lang)} value={result.wins.toString()} color="#00c853" />
-            <SBox label={tr('btLosses', lang)} value={result.losses.toString()} color="#ff1744" />
+            <SBox label={tr('btTotalTrades', lang)}   value={result.totalSignals.toString()} />
+            <SBox label={tr('btWinRate', lang)}        value={`${result.winRate}%`}  color={result.winRate >= 50 ? '#00c853' : '#ff9800'} />
+            <SBox label={tr('btTotalPnl', lang)}       value={`${result.totalPnl >= 0 ? '+' : ''}${fmtHKD(result.totalPnl)}`} color={result.totalPnl >= 0 ? '#00c853' : '#ff1744'} />
+            <SBox label={tr('btTotalReturn', lang)}    value={`${result.totalPnlPct >= 0 ? '+' : ''}${result.totalPnlPct}%`} color={result.totalPnlPct >= 0 ? '#00c853' : '#ff1744'} />
+            <SBox label={tr('btProfitFactor', lang)}   value={result.profitFactor.toString()} color={result.profitFactor >= 1.5 ? '#00c853' : '#ff9800'} tooltip={tr('btPFTip', lang)} />
+            <SBox label={tr('btMaxDD', lang)}          value={`-${fmtHKD(result.maxDrawdown)}`} color="#ff9800" tooltip={tr('btMaxDDTip', lang)} />
+            <SBox label={tr('btWins', lang)}           value={result.wins.toString()}   color="#00c853" />
+            <SBox label={tr('btLosses', lang)}         value={result.losses.toString()} color="#ff1744" />
+            {/* Fix 5: Total commission stat box */}
+            <SBox
+              label={isEN ? 'Total Commission' : '總會費'}
+              value={`-${fmtHKD(result.totalCommission)}`}
+              color="#888"
+              tooltip={isEN
+                ? `${result.totalSignals} trades × HK$${commPerRound}/round = ${fmtHKD(result.totalCommission)} in fees`
+                : `${result.totalSignals} 筆 × HK$${commPerRound}/回 = ${fmtHKD(result.totalCommission)} 會費`}
+            />
           </div>
 
           {interp && (
@@ -221,10 +261,10 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
                 <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: interp.verdictColor }}>
                   {isEN
                     ? interp.isProfitable && interp.isViable
-                      ? 'Strategy looks profitable — here\'s what the numbers mean:'
+                      ? 'Strategy profitable after commission — here\'s what the numbers mean:'
                       : 'Results need attention — here\'s what the numbers mean:'
                     : interp.isProfitable && interp.isViable
-                      ? '策略看起來有獲利潛力 — 以下是數字的含義：'
+                      ? '扣除會費後策略仍獲利 — 以下是數字的含義：'
                       : '結果需要留意 — 以下是數字的含義：'}
                 </span>
               </div>
@@ -238,8 +278,8 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
               </div>
               <div style={styles.interpFooter}>
                 {isEN
-                  ? '⚠️ Past performance does not guarantee future results. Always use stop loss.'
-                  : '⚠️ 過去表現不代表未來結果。每次交易必須設置止蝕。'}
+                  ? '⚠️ Past performance does not guarantee future results. Always use stop loss. Commission rates vary — check Futu for latest fees.'
+                  : '⚠️ 過去表現不代表未來結果。每次交易必須設置止蝕。會費以富途最新公告為準。'}
               </div>
             </div>
           )}
@@ -248,7 +288,10 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
             <>
               <div style={styles.sectionTitle}>{tr('btCumChart', lang)}</div>
               <div style={styles.chartBox}>
-                <svg width="100%" height="100" viewBox={`0 0 ${Math.max(cumData.length * 36, 400)} 100`} preserveAspectRatio="none">
+                <svg width="100%" height="100"
+                  viewBox={`0 0 ${Math.max(cumData.length * 36, 400)} 100`}
+                  preserveAspectRatio="none"
+                >
                   {(() => {
                     const vals  = cumData.map((d) => d.cum);
                     const minV  = Math.min(...vals, 0); const maxV = Math.max(...vals, 0);
@@ -259,13 +302,17 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
                     const zeroY = toY(0);
                     const pts   = cumData.map((d, i) => `${i * step},${toY(d.cum)}`).join(' ');
                     const lastVal = vals[vals.length - 1];
-                    const area  = `M0,${toY(cumData[0].cum)} ` + cumData.slice(1).map((d, i) => `L${(i + 1) * step},${toY(d.cum)}`).join(' ') + ` L${(cumData.length - 1) * step},${zeroY} L0,${zeroY} Z`;
+                    const area  = `M0,${toY(cumData[0].cum)} `
+                      + cumData.slice(1).map((d, i) => `L${(i + 1) * step},${toY(d.cum)}`).join(' ')
+                      + ` L${(cumData.length - 1) * step},${zeroY} L0,${zeroY} Z`;
                     return (
                       <>
                         <line x1="0" y1={zeroY} x2={W} y2={zeroY} stroke="#2a2a3e" strokeWidth="1" strokeDasharray="4" />
                         <path d={area} fill={lastVal >= 0 ? '#00c85320' : '#ff174420'} />
                         <polyline points={pts} fill="none" stroke={lastVal >= 0 ? '#00c853' : '#ff1744'} strokeWidth="2" />
-                        {cumData.map((d, i) => <circle key={i} cx={i * step} cy={toY(d.cum)} r="3" fill={d.cum >= 0 ? '#00c853' : '#ff1744'} />)}
+                        {cumData.map((d, i) => (
+                          <circle key={i} cx={i * step} cy={toY(d.cum)} r="3" fill={d.cum >= 0 ? '#00c853' : '#ff1744'} />
+                        ))}
                       </>
                     );
                   })()}
@@ -280,22 +327,33 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
               <div style={{ overflowX: 'auto' }}>
                 <table style={styles.table}>
                   <thead><tr>
-                    {['#', tr('btDir', lang), tr('btEntryTime', lang), tr('btEntryPrice', lang), tr('btExitPrice', lang), tr('btPnl', lang), tr('btReturn', lang), tr('btExitReason', lang)].map((h) => (
-                      <th key={h} style={styles.th}>{h}</th>
-                    ))}
+                    {['#', tr('btDir', lang), tr('btEntryTime', lang), tr('btEntryPrice', lang),
+                      tr('btExitPrice', lang), tr('btPnl', lang), tr('btReturn', lang), tr('btExitReason', lang)]
+                      .map((h) => <th key={h} style={styles.th}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {result.trades.map((t, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #1a1a2e' }}>
                         <td style={styles.td}>{i + 1}</td>
-                        <td style={{ ...styles.td, color: t.type === 'LONG' ? '#00c853' : '#ff1744' }}>{t.type === 'LONG' ? '🟢 L' : '🔴 S'}</td>
+                        <td style={{ ...styles.td, color: t.type === 'LONG' ? '#00c853' : '#ff1744' }}>
+                          {t.type === 'LONG' ? '🟢 L' : '🔴 S'}
+                        </td>
                         <td style={styles.td}>{fmtTime(t.entryTime)}</td>
                         <td style={styles.td}>{t.entryPrice.toFixed(0)} pts</td>
                         <td style={styles.td}>{t.exitPrice.toFixed(0)} pts</td>
-                        <td style={{ ...styles.td, color: t.pnl >= 0 ? '#00c853' : '#ff1744', fontWeight: 'bold' }}>{t.pnl >= 0 ? '+' : ''}{fmtHKD(t.pnl)}</td>
-                        <td style={{ ...styles.td, color: t.pnlPct >= 0 ? '#00c853' : '#ff1744' }}>{t.pnlPct >= 0 ? '+' : ''}{t.pnlPct}%</td>
-                        <td style={{ ...styles.td, color: t.exitReason === 'TP' ? '#00c853' : t.exitReason === 'SL' ? '#ff1744' : '#888' }}>
-                          {t.exitReason === 'TP' ? tr('btTP', lang) : t.exitReason === 'SL' ? tr('btSL', lang) : tr('btIncomplete', lang)}
+                        <td style={{ ...styles.td, color: t.pnl >= 0 ? '#00c853' : '#ff1744', fontWeight: 'bold' }}>
+                          {t.pnl >= 0 ? '+' : ''}{fmtHKD(t.pnl)}
+                        </td>
+                        <td style={{ ...styles.td, color: t.pnlPct >= 0 ? '#00c853' : '#ff1744' }}>
+                          {t.pnlPct >= 0 ? '+' : ''}{t.pnlPct}%
+                        </td>
+                        <td style={{ ...styles.td,
+                          color: t.exitReason === 'TP' ? '#00c853'
+                               : t.exitReason === 'SL' ? '#ff1744' : '#888' }}
+                        >
+                          {t.exitReason === 'TP' ? tr('btTP', lang)
+                           : t.exitReason === 'SL' ? tr('btSL', lang)
+                           : tr('btIncomplete', lang)}
                         </td>
                       </tr>
                     ))}
@@ -304,7 +362,11 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
               </div>
             </>
           )}
-          {result.totalSignals === 0 && <div style={{ color: '#555', fontFamily: 'monospace', fontSize: '0.82rem' }}>{tr('btNoSignal', lang)}</div>}
+          {result.totalSignals === 0 && (
+            <div style={{ color: '#555', fontFamily: 'monospace', fontSize: '0.82rem' }}>
+              {tr('btNoSignal', lang)}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -335,11 +397,11 @@ const styles: Record<string, React.CSSProperties> = {
   desc:          { fontSize: '0.78rem', color: '#555', fontFamily: 'monospace' },
   futuresNote:   { fontSize: '0.78rem', color: '#f0b90b', fontFamily: 'monospace', background: '#1a1200', border: '1px solid #f0b90b33', borderRadius: 6, padding: '8px 12px' },
   inputHint:     { fontSize: '0.78rem', color: '#29b6f6', fontFamily: 'monospace', background: '#0d2a3e', border: '1px solid #29b6f630', borderRadius: 6, padding: '8px 12px', lineHeight: 1.5 },
-  grid:          { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8 },
+  grid:          { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 },
   input:         { background: '#0f0f1a', border: '1px solid #2a2a3e', color: '#fff', padding: '6px 10px', borderRadius: 6, fontFamily: 'monospace', fontSize: '0.82rem', outline: 'none', width: '100%' },
   runBtn:        { background: '#2a0a3e', border: '1px solid #ab47bc', color: '#ab47bc', padding: '9px 20px', borderRadius: 8, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: 'bold' },
   sectionTitle:  { fontSize: '0.72rem', color: '#555', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1 },
-  summaryGrid:   { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 },
+  summaryGrid:   { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(115px, 1fr))', gap: 8 },
   chartBox:      { background: '#0f0f1a', borderRadius: 8, padding: '10px 8px', border: '1px solid #1a1a2e', overflowX: 'auto' },
   table:         { width: '100%', borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: '0.77rem', minWidth: 560 },
   th:            { padding: '7px 10px', color: '#444', fontWeight: 'normal', textAlign: 'left', borderBottom: '1px solid #1a1a2e', whiteSpace: 'nowrap' },
