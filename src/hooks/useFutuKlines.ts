@@ -3,10 +3,11 @@
  *
  * Data source priority:
  *   1. Futu proxy  /api/klines/:symbol/:interval  (real-time, 10s poll)
- *   2. Yahoo Finance fallback                      (delayed,  60s poll)
+ *   2. Yahoo Finance via allorigins.win            (primary CORS proxy)
+ *   3. Yahoo Finance via corsproxy.io              (backup CORS proxy, auto-retry)
  *
- * FIX #6: replaced recursive setTimeout with setInterval + isCancelled flag
- * to prevent double-chain when symbol/interval changes quickly.
+ * UAT FIX: dual CORS proxy with automatic retry so HK.00005 and other
+ * individual stocks don't show "Failed to fetch" when allorigins is down.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Candle } from '../types/binance';
@@ -14,7 +15,7 @@ import { FutuSymbol, FUTU_TO_YAHOO } from '../types/futu';
 
 export type HKInterval = '5m' | '15m' | '1h' | '4h' | '1d';
 
-// ── Futu proxy ────────────────────────────────────────────────────────────
+// ── Futu proxy ────────────────────────────────────────────────────────
 async function fetchFromFutuProxy(symbol: string, interval: HKInterval, limit: number): Promise<Candle[]> {
   const res = await fetch(
     `/api/klines/${encodeURIComponent(symbol)}/${interval}?limit=${limit}`,
@@ -26,7 +27,7 @@ async function fetchFromFutuProxy(symbol: string, interval: HKInterval, limit: n
   return data;
 }
 
-// ── Yahoo Finance fallback ─────────────────────────────────────────────────
+// ── Yahoo Finance ───────────────────────────────────────────────────────
 const YAHOO_INTERVAL_MAP: Record<HKInterval, string> = {
   '5m': '5m', '15m': '15m', '1h': '60m', '4h': '1d', '1d': '1d',
 };
@@ -34,17 +35,22 @@ const YAHOO_RANGE_MAP: Record<HKInterval, string> = {
   '5m': '5d', '15m': '10d', '1h': '60d', '4h': '1y', '1d': '2y',
 };
 
-function yahooUrl(ticker: string, interval: HKInterval): string {
+// Two CORS proxies — try primary first, fall back to secondary
+function yahooUrlPrimary(ticker: string, interval: HKInterval): string {
   const raw = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${YAHOO_INTERVAL_MAP[interval]}&range=${YAHOO_RANGE_MAP[interval]}`;
   return `https://api.allorigins.win/get?url=${encodeURIComponent(raw)}`;
+}
+function yahooUrlBackup(ticker: string, interval: HKInterval): string {
+  const raw = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${YAHOO_INTERVAL_MAP[interval]}&range=${YAHOO_RANGE_MAP[interval]}`;
+  return `https://corsproxy.io/?${encodeURIComponent(raw)}`;
 }
 
 function parseYahooChart(json: unknown): Candle[] {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = (json as any)?.chart?.result?.[0];
   if (!result) return [];
-  const ts: number[]  = result.timestamp ?? [];
-  const q             = result.indicators?.quote?.[0] ?? {};
+  const ts: number[] = result.timestamp ?? [];
+  const q            = result.indicators?.quote?.[0] ?? {};
   return ts
     .map((t, i) => ({
       time:   t,
@@ -60,20 +66,33 @@ function parseYahooChart(json: unknown): Candle[] {
 async function fetchFromYahoo(symbol: FutuSymbol, interval: HKInterval): Promise<Candle[]> {
   const ticker = FUTU_TO_YAHOO[symbol];
   if (!ticker) throw new Error(`No Yahoo ticker for ${symbol}`);
-  const res    = await fetch(yahooUrl(ticker, interval));
-  if (!res.ok) throw new Error(`Yahoo HTTP ${res.status}`);
-  const wrapper = await res.json();
-  const inner   = JSON.parse(wrapper.contents ?? '{}');
-  const data    = parseYahooChart(inner);
-  if (data.length === 0) throw new Error('Empty Yahoo data');
-  return data;
+
+  // Try primary CORS proxy (allorigins)
+  try {
+    const res = await fetch(yahooUrlPrimary(ticker, interval), { signal: AbortSignal.timeout(8000) });
+    if (res.ok) {
+      const wrapper = await res.json();
+      // allorigins wraps in { contents: "..." }
+      const inner = JSON.parse(wrapper.contents ?? '{}');
+      const data  = parseYahooChart(inner);
+      if (data.length > 0) return data;
+    }
+  } catch { /* fall through to backup */ }
+
+  // Backup CORS proxy (corsproxy.io) — returns raw Yahoo JSON, no wrapper
+  const res2 = await fetch(yahooUrlBackup(ticker, interval), { signal: AbortSignal.timeout(10000) });
+  if (!res2.ok) throw new Error(`Yahoo HTTP ${res2.status} (both proxies failed)`);
+  const raw2 = await res2.json();
+  const data2 = parseYahooChart(raw2);
+  if (data2.length === 0) throw new Error('Empty data from both proxies');
+  return data2;
 }
 
-// ── Poll intervals ──────────────────────────────────────────────────────────
+// ── Poll intervals ─────────────────────────────────────────────────────────
 const FUTU_POLL_MS  = 10_000;
 const YAHOO_POLL_MS = 60_000;
 
-// ── Hook ───────────────────────────────────────────────────────────────────
+// ── Hook ────────────────────────────────────────────────────────────────
 export function useFutuKlines(
   interval: HKInterval = '15m',
   limit = 200,
@@ -85,26 +104,22 @@ export function useFutuKlines(
   const [lastPrice,  setLastPrice]  = useState<number | null>(null);
   const [dataSource, setDataSource] = useState<'futu' | 'yahoo' | null>(null);
 
-  // FIX #6: use a single ref that stores the current interval ID and a cancel flag
-  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
-  const cancelRef   = useRef(false);
+  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cancelRef = useRef(false);
 
   const fetchKlines = useCallback(async () => {
     try {
       const data = await fetchFromFutuProxy(symbol, interval, limit);
-      if (cancelRef.current) return;           // symbol changed while fetching
+      if (cancelRef.current) return;
       setCandles(data);
       setLastPrice(data[data.length - 1]?.close ?? null);
       setError(null);
       setDataSource('futu');
-
-      // Switch to fast poll if we're on slow Yahoo schedule
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = setInterval(fetchKlines, FUTU_POLL_MS);
       }
     } catch {
-      // Futu proxy down — fall back to Yahoo silently
       try {
         const data = await fetchFromYahoo(symbol as FutuSymbol, interval);
         if (cancelRef.current) return;
@@ -124,21 +139,15 @@ export function useFutuKlines(
   }, [symbol, interval, limit]);
 
   useEffect(() => {
-    // FIX #6: cancel any in-flight fetch from previous symbol/interval
     cancelRef.current = true;
     if (timerRef.current) clearInterval(timerRef.current);
-
-    // Reset for new symbol
     cancelRef.current = false;
     setLoading(true);
     setCandles([]);
     setLastPrice(null);
     setDataSource(null);
-
-    // Initial fetch then poll on Yahoo cadence (will speed up if Futu connects)
     fetchKlines();
     timerRef.current = setInterval(fetchKlines, YAHOO_POLL_MS);
-
     return () => {
       cancelRef.current = true;
       if (timerRef.current) clearInterval(timerRef.current);
