@@ -40,30 +40,6 @@ const HK_SYMBOLS: {
     descZH: '小型國企指數期貨 — 追蹤在港上市的中國內地企業股票走勢。',
     tag: 'FUTURES',
   },
-  {
-    value: 'HK.00700',
-    icon: '🎮',
-    labelEN: 'Tencent',
-    labelZH: '騰訊',
-    descEN: 'Tencent Holdings (0700.HK) — largest HK-listed tech stock.',
-    descZH: '騰訊控股（0700.HK）——港股最大市值科技股。',
-  },
-  {
-    value: 'HK.00005',
-    icon: '🏦',
-    labelEN: 'HSBC',
-    labelZH: '匯豐控股',
-    descEN: 'HSBC Holdings (0005.HK) — largest HK blue-chip bank stock.',
-    descZH: '匯豐控股（0005.HK）——香港最大藍籌銀行股。',
-  },
-  {
-    value: 'HK.09988',
-    icon: '🛒',
-    labelEN: 'Alibaba',
-    labelZH: '阿里巴巴',
-    descEN: 'Alibaba Group (9988.HK) — major China tech / e-commerce.',
-    descZH: '阿里巴巴集團（9988.HK）——中國電商及科技巨頭。',
-  },
 ];
 
 const INTERVALS: {
@@ -109,8 +85,8 @@ export default function ControlBar({
 
       {/* ── Asset ── */}
       <Group
-        label={isEN ? 'HK Futures / Stocks' : 'HK 期貨／股票'}
-        tip={isEN ? 'Choose a HK futures contract or stock to analyse' : '選擇港股期貨合約或個股進行分析'}
+        label={isEN ? 'HK Index Futures' : 'HK 指數期貨'}
+        tip={isEN ? 'Choose a HK index futures contract to analyse' : '選擇港股指數期貨合約進行分析'}
         onHelp={() => setShowSymbolGuide(!showSymbolGuide)}
         helpOpen={showSymbolGuide}
       >

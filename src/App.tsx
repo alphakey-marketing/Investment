@@ -138,11 +138,6 @@ export default function App() {
     'HK.MHImain': isEN ? '🇭🇰 Mini HSI Fut' : '🇭🇰 小型恒指期貨',
     'HK.HSImain': isEN ? '📊 HSI Futures'   : '📊 恒指期貨',
     'HK.HHImain': isEN ? '🇨🇳 H-Share Fut'  : '🇨🇳 國指期貨',
-    'HK.00700':   '🎮 Tencent 騰街',
-    'HK.00005':   '🏦 HSBC 匱豐',
-    'HK.00941':   '📡 China Mobile',
-    'HK.02318':   '🏢 Ping An',
-    'HK.09988':   '🛒 Alibaba 阿里',
   };
   const symbolLabel = symbolLabels[symbol] ?? symbol;
   const modeColor = mode === 'LIVE' ? '#f0b90b' : mode === 'PAPER' ? '#29b6f6' : '#ab47bc';

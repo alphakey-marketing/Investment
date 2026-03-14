@@ -79,7 +79,7 @@ export default function TradeJournal({ trades, onClose, onDelete, onClear, lang 
       <button onClick={() => setOpen(!open)} style={styles.toggleBtn}>
         {tr('journalTitle', lang)}
         <span style={{ marginLeft: 8, color: perf.totalPnl >= 0 ? '#00c853' : '#ff1744', fontWeight: 'bold' }}>
-          {perf.totalPnl >= 0 ? '+' : ''}{fmt(perf.totalPnl)} USDT
+          {perf.totalPnl >= 0 ? '+' : ''}HK${fmt(perf.totalPnl)}
         </span>
         <span style={{ marginLeft: 'auto', color: '#444' }}>{open ? '▼' : '▶'}</span>
       </button>
@@ -107,12 +107,12 @@ export default function TradeJournal({ trades, onClose, onDelete, onClear, lang 
           <div style={styles.summaryGrid}>
             <SCard label={tr('totalTrades', lang)} value={perf.totalTrades.toString()} />
             <SCard label={tr('winRate', lang)} value={`${perf.winRate}%`} color={perf.winRate >= 50 ? '#00c853' : '#ff9800'} />
-            <SCard label={tr('totalPnl', lang)} value={`${perf.totalPnl >= 0 ? '+' : ''}$${fmt(perf.totalPnl)}`} color={perf.totalPnl >= 0 ? '#00c853' : '#ff1744'} />
+            <SCard label={tr('totalPnl', lang)} value={`${perf.totalPnl >= 0 ? '+' : ''}HK$${fmt(perf.totalPnl)}`} color={perf.totalPnl >= 0 ? '#00c853' : '#ff1744'} />
             <SCard label={tr('profitFactor', lang)} value={perf.profitFactor.toString()} color={perf.profitFactor >= 1.5 ? '#00c853' : '#ff9800'} tooltip={tr('profitFactorTip', lang)} />
-            <SCard label={tr('avgWin', lang)} value={`+$${fmt(perf.avgWin)}`} color="#00c853" />
-            <SCard label={tr('avgLoss', lang)} value={`-$${fmt(perf.avgLoss)}`} color="#ff1744" />
-            <SCard label={tr('bestTrade', lang)} value={`+$${fmt(perf.bestTrade)}`} color="#00c853" />
-            <SCard label={tr('worstTrade', lang)} value={`$${fmt(perf.worstTrade)}`} color="#ff1744" />
+            <SCard label={tr('avgWin', lang)} value={`+HK$${fmt(perf.avgWin)}`} color="#00c853" />
+            <SCard label={tr('avgLoss', lang)} value={`-HK$${fmt(perf.avgLoss)}`} color="#ff1744" />
+            <SCard label={tr('bestTrade', lang)} value={`+HK$${fmt(perf.bestTrade)}`} color="#00c853" />
+            <SCard label={tr('worstTrade', lang)} value={`HK$${fmt(perf.worstTrade)}`} color="#ff1744" />
           </div>
 
           {/* Cumulative P&L Chart */}
@@ -159,16 +159,16 @@ export default function TradeJournal({ trades, onClose, onDelete, onClear, lang 
                 {trades.map((t) => (
                   <React.Fragment key={t.id}>
                     <tr style={styles.tr}>
-                      <td style={styles.td}>{t.symbol.replace('USDT','')}</td>
+                      <td style={styles.td}>{t.symbol.replace(/^HK\./, '')}</td>
                       <td style={{ ...styles.td, color: t.type==='LONG'?'#00c853':'#ff1744', fontWeight:'bold' }}>
                         {t.type==='LONG' ? '🟢 L' : '🔴 S'}
                       </td>
-                      <td style={styles.td}>${fmt(t.entryPrice)}</td>
-                      <td style={styles.td}>{t.exitPrice ? `$${fmt(t.exitPrice)}` : '—'}</td>
-                      <td style={{ ...styles.td, color:'#ff174488' }}>${fmt(t.stopLoss)}</td>
-                      <td style={{ ...styles.td, color:'#00c85388' }}>${fmt(t.takeProfit)}</td>
+                      <td style={styles.td}>HK${fmt(t.entryPrice)}</td>
+                      <td style={styles.td}>{t.exitPrice ? `HK${fmt(t.exitPrice)}` : '—'}</td>
+                      <td style={{ ...styles.td, color:'#ff174488' }}>HK${fmt(t.stopLoss)}</td>
+                      <td style={{ ...styles.td, color:'#00c85388' }}>HK${fmt(t.takeProfit)}</td>
                       <td style={{ ...styles.td, fontWeight:'bold', color: t.pnl===null?'#555':t.pnl>=0?'#00c853':'#ff1744' }}>
-                        {t.pnl===null ? tr('inProgress',lang) : `${t.pnl>=0?'+':''}$${fmt(t.pnl)}`}
+                        {t.pnl===null ? tr('inProgress',lang) : `${t.pnl>=0?'+':''}HK$${fmt(t.pnl)}`}
                       </td>
                       <td style={{ ...styles.td, color: t.pnlPct===null?'#555':t.pnlPct>=0?'#00c853':'#ff1744' }}>
                         {t.pnlPct===null ? '—' : `${t.pnlPct>=0?'+':''}${t.pnlPct}%`}
