@@ -112,24 +112,24 @@ const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 
 // ─── Main App ───────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [mode,       setMode]       = useState<AppMode>('LIVE');
-  const [lang,       setLang]       = useState<Lang>('ZH');
-  const [symbol,     setSymbol]     = useState<FutuSymbol>('HK.MHImain');
-  const [interval,   setInterval]   = useState<HKInterval>('15m');
-  const [ma1Period,  setMa1Period]  = useState(10);
-  const [ma2Period,  setMa2Period]  = useState(20);
+  const [mode,         setMode]         = useState<AppMode>('LIVE');
+  const [lang,         setLang]         = useState<Lang>('ZH');
+  const [symbol,       setSymbol]       = useState<FutuSymbol>('HK.MHImain');
+  const [klineInterval, setKlineInterval] = useState<HKInterval>('15m');
+  const [ma1Period,    setMa1Period]    = useState(10);
+  const [ma2Period,    setMa2Period]    = useState(20);
   const [showOnboard, setShowOnboard] = useState(() => !localStorage.getItem('onboard_dismissed'));
   const [showRoadmap, setShowRoadmap] = useState(() => !localStorage.getItem('roadmap_dismissed'));
 
   // Fix 3: destructure lastUpdated from useFutuKlines for stale data detection
   const { candles, loading, error, lastPrice, dataSource, lastUpdated } =
-    useFutuKlines(interval, 200, symbol);
+    useFutuKlines(klineInterval, 200, symbol);
 
   // Fix 3: compute staleness every second via a tick counter
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 5000);
-    return () => clearInterval(id);
+    const id = window.setInterval(() => setNow(Date.now()), 5000);
+    return () => window.clearInterval(id);
   }, []);
   const isStale = lastUpdated !== null && (now - lastUpdated.getTime()) > STALE_THRESHOLD_MS;
   const secsSinceUpdate = lastUpdated ? Math.round((now - lastUpdated.getTime()) / 1000) : null;
@@ -159,7 +159,7 @@ export default function App() {
   const dismissRoadmap = () => { localStorage.setItem('roadmap_dismissed', '1'); setShowRoadmap(false); };
 
   const handleIntervalChange = (i: string) => {
-    setInterval(i.toLowerCase() as HKInterval);
+    setKlineInterval(i.toLowerCase() as HKInterval);
   };
 
   useEffect(() => {
@@ -271,7 +271,7 @@ export default function App() {
         <div>
           <h1 style={{ ...styles.header, color: modeColor }}>{tr('appTitle', lang)}</h1>
           <div style={styles.subHeader}>
-            {symbolLabel} · {interval.toUpperCase()} · MA{ma1Period}/MA{ma2Period}
+            {symbolLabel} · {klineInterval.toUpperCase()} · MA{ma1Period}/MA{ma2Period}
             {contractSpec.isFutures && (
               <span style={{ marginLeft: 6, color: '#f0b90b55', fontSize: '0.68rem' }}>
                 HK${contractSpec.multiplier}/pt · margin~HK${(contractSpec.marginEstHKD / 1000).toFixed(0)}k
@@ -303,7 +303,7 @@ export default function App() {
 
       <ControlBar
         symbol={symbol}
-        interval={interval}
+        interval={klineInterval}
         ma1Period={ma1Period}
         ma2Period={ma2Period}
         lang={lang}
