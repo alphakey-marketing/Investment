@@ -23,7 +23,13 @@ function fmtTime(unix: number) {
 }
 
 // ── Interpretation helper ─────────────────────────────────────────────────────
-function getInterpretation(result: BacktestResult, rr: number, commPerRound: number, lang: Lang) {
+function getInterpretation(
+  result: BacktestResult,
+  rr: number,
+  commPerRound: number,
+  multiplier: number,
+  lang: Lang,
+) {
   const isEN = lang === 'EN';
   const { winRate, totalPnl, profitFactor, totalSignals, totalCommission } = result;
   if (totalSignals === 0) return null;
@@ -97,16 +103,16 @@ function getInterpretation(result: BacktestResult, rr: number, commPerRound: num
     });
   }
 
+  // Use actual multiplier to compute break-even points (fixed from hard-coded 10)
+  const breakEvenPts = multiplier > 0 ? Math.ceil(commPerRound / multiplier) : commPerRound;
   lines.push({ icon: '💡', color: '#29b6f6',
     text: isEN
-      ? `Key insight: Commission drag is real — HK$${commPerRound} per trade on MHI needs ${Math.ceil(commPerRound / (multiplierHint(10)))} extra pts just to break even. Use wider TP to offset.`
-      : `重點：會費影響真實存在——MHI每筆 HK$${commPerRound} 會費需額外 ${Math.ceil(commPerRound / 10)} 點才能扣平。可考慮擴大止盈目標。`,
+      ? `Key insight: Commission drag is real — HK$${commPerRound}/trade on this contract (HK$${multiplier}/pt) needs ${breakEvenPts} extra pts just to break even. Use wider TP to offset.`
+      : `重點：會費影響真實存在——每筆 HK$${commPerRound} 會費（HK$${multiplier}/點）需額外 ${breakEvenPts} 點才能扣平。可考慮擴大止盈目標。`,
   });
 
   return { verdictIcon, verdictColor, isProfitable, isViable, lines };
 }
-
-function multiplierHint(mult: number) { return mult; }
 
 export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, lang }: Props) {
   const spec       = CONTRACT_SPECS[symbol as FutuSymbol];
@@ -116,7 +122,6 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
   const [contractsInput, setContractsInput] = useState('1');
   const [slPct,          setSlPct]          = useState(isFutures ? '0.5' : '1');
   const [tpPct,          setTpPct]          = useState(isFutures ? '1.5' : '3');
-  // Fix 5: commission input, default HK$80 for MHI, HK$120 for HSI/HHI
   const [commInput,      setCommInput]      = useState(multiplier >= 50 ? '120' : '80');
   const [ran,            setRan]            = useState(false);
   const [result,         setResult]         = useState<BacktestResult | null>(null);
@@ -136,9 +141,9 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
       contracts, multiplier,
       parseFloat(slPct) / 100 || 0.005,
       parseFloat(tpPct) / 100 || 0.015,
-      0.005,          // proximityPct (fixed)
-      commPerRound,   // Fix 5
-      true,           // includeFuturesEvening (Fix 4)
+      0.005,
+      commPerRound,
+      true,
     );
     setResult(r); setRan(true);
   };
@@ -152,7 +157,8 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
     }, []);
   }, [result]);
 
-  const interp = result ? getInterpretation(result, rrRatio, commPerRound, lang) : null;
+  // Pass multiplier into getInterpretation so break-even pts tip is correct for all contracts
+  const interp = result ? getInterpretation(result, rrRatio, commPerRound, multiplier, lang) : null;
 
   const sampleEntry = candles[candles.length - 1]?.close ?? 20000;
   const slPts = Math.round(sampleEntry * (parseFloat(slPct) / 100));
@@ -162,7 +168,8 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
 
   return (
     <div style={styles.wrapper}>
-      <div style={styles.title}>{‘🔍 回歸測試’ /* tr('backtestTitle', lang) */}</div>
+      {/* UAT fix: was {'\u2018\ud83d\udd0d \u56de\u6b78\u6e2c\u8a66\u2019} with curly quotes — parse error */}
+      <div style={styles.title}>{tr('backtestTitle', lang)}</div>
 
       <div style={styles.desc}>
         {tr('backtestDesc1', lang)} {candles.length} {tr('backtestDesc2', lang)}
@@ -215,7 +222,6 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
           <input style={styles.input} type="number" value={tpPct} onChange={(e) => setTpPct(e.target.value)} />
         </Field>
 
-        {/* Fix 5: Commission input */}
         <Field
           label={isEN ? 'Commission HKD/round' : '會費 HKD/回'}
           hint={isEN
@@ -243,7 +249,6 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
             <SBox label={tr('btMaxDD', lang)}          value={`-${fmtHKD(result.maxDrawdown)}`} color="#ff9800" tooltip={tr('btMaxDDTip', lang)} />
             <SBox label={tr('btWins', lang)}           value={result.wins.toString()}   color="#00c853" />
             <SBox label={tr('btLosses', lang)}         value={result.losses.toString()} color="#ff1744" />
-            {/* Fix 5: Total commission stat box */}
             <SBox
               label={isEN ? 'Total Commission' : '總會費'}
               value={`-${fmtHKD(result.totalCommission)}`}
@@ -261,8 +266,8 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
                 <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: interp.verdictColor }}>
                   {isEN
                     ? interp.isProfitable && interp.isViable
-                      ? 'Strategy profitable after commission — here\'s what the numbers mean:'
-                      : 'Results need attention — here\'s what the numbers mean:'
+                      ? "Strategy profitable after commission \u2014 here's what the numbers mean:"
+                      : "Results need attention \u2014 here's what the numbers mean:"
                     : interp.isProfitable && interp.isViable
                       ? '扣除會費後策略仍獲利 — 以下是數字的含義：'
                       : '結果需要留意 — 以下是數字的含義：'}
