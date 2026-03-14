@@ -39,15 +39,15 @@ function BeginnerRoadmap({ lang, onDismiss }: { lang: Lang; onDismiss: () => voi
   };
 
   const steps = isEN ? [
-    { icon: '📖', label: 'Read the Beginner Guide',   sub: 'Scroll to Signal Panel below',        id: 'signal-guide' },
-    { icon: '🔁', label: 'Run a Backtest',           sub: 'Switch to Backtest mode above',        id: 'mode-bar' },
-    { icon: '🧸', label: 'Try Paper Trading',        sub: 'Switch to Paper mode — zero real money', id: 'mode-bar' },
-    { icon: '🚦', label: 'Watch for a Live Signal',  sub: 'Stay in Live mode and wait',           id: 'signal-panel' },
+    { icon: '📖', label: 'Read the Beginner Guide',   sub: 'Scroll to Signal Panel below',          id: 'signal-guide' },
+    { icon: '🔁', label: 'Run a Backtest',             sub: 'Switch to Backtest mode above',          id: 'mode-bar' },
+    { icon: '🧸', label: 'Try Paper Trading',          sub: 'Switch to Paper mode — zero real money', id: 'mode-bar' },
+    { icon: '🚦', label: 'Watch for a Live Signal',    sub: 'Stay in Live mode and wait',             id: 'signal-panel' },
   ] : [
-    { icon: '📖', label: '閱讀新手指南',   sub: '向下滾動至訊號面板',   id: 'signal-guide' },
-    { icon: '🔁', label: '執行回歸測試',   sub: '切換至回歸測試模式',   id: 'mode-bar' },
+    { icon: '📖', label: '閱讀新手指南',     sub: '向下滾動至訊號面板',      id: 'signal-guide' },
+    { icon: '🔁', label: '執行回歸測試',     sub: '切換至回歸測試模式',      id: 'mode-bar' },
     { icon: '🧸', label: '嘗試模擬盤交易',   sub: '切換至模擬盤模式，零風險', id: 'mode-bar' },
-    { icon: '🚦', label: '等待即時訊號',   sub: '留在即時模式等待訊號出現', id: 'signal-panel' },
+    { icon: '🚦', label: '等待即時訊號',     sub: '留在即時模式等待訊號出現', id: 'signal-panel' },
   ];
 
   const allDone = steps.every((_, i) => done[i]);
@@ -107,30 +107,43 @@ const rmStyles: Record<string, React.CSSProperties> = {
   stepNum:  { flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
 };
 
+// ─── Stale data threshold ────────────────────────────────────────────────────
+const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
+
 // ─── Main App ───────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [mode,     setMode]     = useState<AppMode>('LIVE');
-  const [lang,     setLang]     = useState<Lang>('ZH');
-  const [symbol,   setSymbol]   = useState<FutuSymbol>('HK.MHImain');
-  // FIX #2: state is HKInterval (lowercase), ControlBar emits lowercase values — no cast needed
-  const [interval, setInterval] = useState<HKInterval>('15m');
-  const [ma1Period, setMa1Period] = useState(10);
-  const [ma2Period, setMa2Period] = useState(20);
+  const [mode,       setMode]       = useState<AppMode>('LIVE');
+  const [lang,       setLang]       = useState<Lang>('ZH');
+  const [symbol,     setSymbol]     = useState<FutuSymbol>('HK.MHImain');
+  const [interval,   setInterval]   = useState<HKInterval>('15m');
+  const [ma1Period,  setMa1Period]  = useState(10);
+  const [ma2Period,  setMa2Period]  = useState(20);
   const [showOnboard, setShowOnboard] = useState(() => !localStorage.getItem('onboard_dismissed'));
   const [showRoadmap, setShowRoadmap] = useState(() => !localStorage.getItem('roadmap_dismissed'));
 
-  // FIX #1: destructure dataSource so we can show live/fallback banner
-  const { candles, loading, error, lastPrice, dataSource } = useFutuKlines(interval, 200, symbol);
+  // Fix 3: destructure lastUpdated from useFutuKlines for stale data detection
+  const { candles, loading, error, lastPrice, dataSource, lastUpdated } =
+    useFutuKlines(interval, 200, symbol);
+
+  // Fix 3: compute staleness every second via a tick counter
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, []);
+  const isStale = lastUpdated !== null && (now - lastUpdated.getTime()) > STALE_THRESHOLD_MS;
+  const secsSinceUpdate = lastUpdated ? Math.round((now - lastUpdated.getTime()) / 1000) : null;
 
   const contractSpec = CONTRACT_SPECS[symbol];
   const ma20   = calculateSMA(candles, ma1Period);
   const ma60   = calculateSMA(candles, ma2Period);
   const signal = detectSignal(candles, ma1Period, ma2Period);
-  const { history, clearHistory } = useSignalHistory(signal);
+  const { history, clearHistory }                                          = useSignalHistory(signal);
   const { config, saveConfig, sendMessage, testSend, sending, lastStatus } = useTelegram();
   const { emailConfig, saveEmailConfig, sendEmail, testEmail, emailSending, emailStatus } = useEmail();
-  const { trades, addTrade, closeTrade, deleteTrade, clearAll } = useTradeJournal();
-  const { account, openPosition, closePosition, resetAccount, pnl: paperPnl, pnlPct: paperPnlPct } = usePaperTrading(addTrade);
+  const { trades, addTrade, closeTrade, deleteTrade, clearAll }            = useTradeJournal();
+  const { account, openPosition, closePosition, resetAccount, pnl: paperPnl, pnlPct: paperPnlPct } =
+    usePaperTrading(addTrade);
   const lastNotifiedRef = useRef<number | null>(null);
   const isEN = lang === 'EN';
 
@@ -140,15 +153,13 @@ export default function App() {
     'HK.HHImain': isEN ? '🇨🇳 H-Share Fut'  : '🇨🇳 國指期貨',
   };
   const symbolLabel = symbolLabels[symbol] ?? symbol;
-  const modeColor = mode === 'LIVE' ? '#f0b90b' : mode === 'PAPER' ? '#29b6f6' : '#ab47bc';
+  const modeColor   = mode === 'LIVE' ? '#f0b90b' : mode === 'PAPER' ? '#29b6f6' : '#ab47bc';
 
   const dismissOnboard = () => { localStorage.setItem('onboard_dismissed', '1'); setShowOnboard(false); };
   const dismissRoadmap = () => { localStorage.setItem('roadmap_dismissed', '1'); setShowRoadmap(false); };
 
-  // FIX #2: onIntervalChange passes HKInterval directly — no unsafe cast
   const handleIntervalChange = (i: string) => {
-    const normalised = i.toLowerCase() as HKInterval;
-    setInterval(normalised);
+    setInterval(i.toLowerCase() as HKInterval);
   };
 
   useEffect(() => {
@@ -170,7 +181,9 @@ export default function App() {
       `${isLong ? '🟢' : '🔴'} <b>KMA ${signal.type} Entry Signal</b>`,
       `📊 <b>Contract:</b> ${symbolLabel}  💰 <b>Index:</b> ${signal.price.toFixed(0)} pts`,
       `🛑 <b>S/L:</b> ${(isLong ? signal.price * 0.99 : signal.price * 1.01).toFixed(0)}  🎯 <b>T/P:</b> ${(isLong ? signal.price * 1.03 : signal.price * 0.97).toFixed(0)}`,
-      contractSpec.isFutures ? `💵 <b>HKD/pt:</b> HK$${contractSpec.multiplier}  📋 <b>Est. Margin:</b> HK$${contractSpec.marginEstHKD.toLocaleString()}` : '',
+      contractSpec.isFutures
+        ? `💵 <b>HKD/pt:</b> HK$${contractSpec.multiplier}  📋 <b>Est. Margin:</b> HK$${contractSpec.marginEstHKD.toLocaleString()}`
+        : '',
       `⏰ ${new Date(signal.time * 1000).toLocaleString('en-HK')}`,
       `<i>⚠️ For reference only</i>`,
     ].filter(Boolean).join('\n');
@@ -192,23 +205,34 @@ export default function App() {
     if (Notification.permission === 'default') Notification.requestPermission();
   }, []);
 
-  // FIX #1: dynamic data source banner
-  const dataSourceBanner = dataSource === 'futu'
-    ? (isEN ? '🟢 Live data: Futu OpenAPI · updates every 10s' : '🟢 即時數據：富途 OpenAPI · 每10秒更新')
-    : dataSource === 'yahoo'
-    ? (isEN ? '📡 Data: Yahoo Finance (fallback) · updates every 60s · Start proxy for live data' : '📡 數據：Yahoo Finance（備用）· 每60秒· 啟動代理伺服器可獲即時數據')
-    : (isEN ? '⏳ Connecting…' : '⏳ 連接中…');
+  // ── Data source banner text ──────────────────────────────────────────────
+  const dataSourceBanner = isStale
+    ? (isEN
+        ? `🔴 STALE DATA — last update ${secsSinceUpdate}s ago. Check connection or restart proxy.`
+        : `🔴 數據已過時 — 最後更新於 ${secsSinceUpdate} 秒前。請檢查網絡或重啟代理。`)
+    : dataSource === 'futu'
+      ? (isEN ? '🟢 Live data: Futu OpenAPI · updates every 10s' : '🟢 即時數據：富途 OpenAPI · 每10秒更新')
+      : dataSource === 'yahoo'
+        ? (isEN
+            ? `📡 Data: Yahoo Finance (fallback) · updates every 60s${secsSinceUpdate ? ` · ${secsSinceUpdate}s ago` : ''} · Start proxy for live data`
+            : `📡 數據：Yahoo Finance（備用）· 每60秒更新${secsSinceUpdate ? `· ${secsSinceUpdate}秒前` : ''} · 啟動代理伺服器可獲即時數據`)
+        : (isEN ? '⏳ Connecting…' : '⏳ 連接中…');
+
+  const bannerBorderColor  = isStale ? '#ff174422' : dataSource === 'futu' ? '#00c85322' : '#f0b90b22';
+  const bannerColor        = isStale ? '#ff5252'   : dataSource === 'futu' ? '#00c85388' : '#f0b90b88';
+  const bannerBackground   = isStale ? '#2a0000'   : dataSource === 'futu' ? '#0d1a0d'   : '#1a1500';
 
   return (
     <main style={styles.main}>
       <Toaster position="top-right" />
 
-      {/* FIX #1: dynamic data source banner */}
+      {/* Data source / stale banner */}
       <div style={{
         ...styles.dataSourceBadge,
-        borderColor:  dataSource === 'futu' ? '#00c85322' : '#f0b90b22',
-        color:        dataSource === 'futu' ? '#00c85388' : '#f0b90b88',
-        background:   dataSource === 'futu' ? '#0d1a0d'   : '#1a1500',
+        borderColor: bannerBorderColor,
+        color:       bannerColor,
+        background:  bannerBackground,
+        fontWeight:  isStale ? 'bold' : 'normal',
       }}>
         {dataSourceBanner}
       </div>
@@ -277,7 +301,6 @@ export default function App() {
         <ModeBar mode={mode} onChange={setMode} lang={lang} onLangChange={setLang} />
       </div>
 
-      {/* FIX #2: onIntervalChange uses handleIntervalChange — normalises to lowercase HKInterval */}
       <ControlBar
         symbol={symbol}
         interval={interval}
@@ -320,7 +343,6 @@ export default function App() {
             <PositionCalculator signal={signal} lastPrice={lastPrice} onAddTrade={addTrade} symbol={symbol} lang={lang} />
           </ErrorBoundary>
           <ErrorBoundary fallback="Journal failed">
-            {/* FIX #5: filter by source:'live' tag added by addTrade in LIVE mode */}
             <TradeJournal
               trades={trades.filter(t => !t.notes?.includes('[paper]'))}
               onClose={closeTrade} onDelete={deleteTrade} onClear={clearAll} lang={lang}
@@ -347,7 +369,6 @@ export default function App() {
             />
           </ErrorBoundary>
           <ErrorBoundary fallback="Journal failed">
-            {/* FIX #5: paper trades are tagged [paper] in notes by usePaperTrading */}
             <TradeJournal
               trades={trades.filter(t => t.notes?.includes('[paper]'))}
               onClose={closeTrade} onDelete={deleteTrade} onClear={clearAll} lang={lang}
@@ -356,9 +377,16 @@ export default function App() {
         </>
       )}
 
+      {/* Fix 1: Pass symbol prop so BacktestPanel can look up CONTRACT_SPECS */}
       {mode === 'BACKTEST' && (
         <ErrorBoundary fallback="Backtest failed">
-          <BacktestPanel candles={candles} ma1Period={ma1Period} ma2Period={ma2Period} lang={lang} />
+          <BacktestPanel
+            candles={candles}
+            ma1Period={ma1Period}
+            ma2Period={ma2Period}
+            symbol={symbol}
+            lang={lang}
+          />
         </ErrorBoundary>
       )}
 
@@ -372,21 +400,21 @@ export default function App() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  main:           { minHeight: '100vh', background: '#0a0a1a', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 12px', gap: 14, fontFamily: 'monospace' },
-  dataSourceBadge:{ borderRadius: 8, padding: '4px 12px', fontSize: '0.68rem', fontFamily: 'monospace', maxWidth: 700, width: '100%', textAlign: 'center', border: '1px solid', transition: 'all 0.5s' },
-  onboard:        { background: 'linear-gradient(135deg, #1a1a35, #12122a)', border: '1px solid #f0b90b55', borderRadius: 14, padding: '18px 20px', maxWidth: 700, width: '100%', boxShadow: '0 4px 24px #f0b90b18' },
-  onboardInner:   { display: 'flex', gap: 14, alignItems: 'flex-start' },
-  onboardIcon:    { fontSize: '2rem', flexShrink: 0 },
-  onboardTitle:   { fontSize: '0.95rem', fontWeight: 'bold', color: '#f0b90b', marginBottom: 6 },
-  onboardDesc:    { fontSize: '0.8rem', color: '#aaa', lineHeight: 1.6, marginBottom: 10 },
-  onboardClose:   { background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '1rem', flexShrink: 0, padding: 4 },
-  headerRow:      { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%', maxWidth: 700 },
-  header:         { fontFamily: 'monospace', fontSize: '1.15rem', margin: 0 },
-  subHeader:      { color: '#555', fontFamily: 'monospace', fontSize: '0.75rem', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
-  badge:          { border: '1px solid', padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontFamily: 'monospace' },
-  tgBadge:        { background: '#0d2a3e', color: '#29b6f6', border: '1px solid #29b6f6', padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontFamily: 'monospace' },
-  emailBadge:     { background: '#1a0d2e', color: '#ce93d8', border: '1px solid #ce93d8', padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontFamily: 'monospace' },
-  statusCard:     { background: '#1a1a2e', border: '1px solid #2a2a3e', borderRadius: 10, padding: '14px 18px', maxWidth: 700, width: '100%', color: '#888', fontFamily: 'monospace', fontSize: '0.85rem', display: 'flex', gap: 10, alignItems: 'center' },
-  clearBtn:       { background: 'none', border: 'none', color: '#333', fontFamily: 'monospace', fontSize: '0.72rem', cursor: 'pointer', marginTop: 6, padding: '2px 6px' },
-  footer:         { color: '#2a2a3e', fontSize: '0.72rem', fontFamily: 'monospace', textAlign: 'center', margin: 0, marginTop: 8 },
+  main:            { minHeight: '100vh', background: '#0a0a1a', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 12px', gap: 14, fontFamily: 'monospace' },
+  dataSourceBadge: { borderRadius: 8, padding: '4px 12px', fontSize: '0.68rem', fontFamily: 'monospace', maxWidth: 700, width: '100%', textAlign: 'center', border: '1px solid', transition: 'all 0.5s' },
+  onboard:         { background: 'linear-gradient(135deg, #1a1a35, #12122a)', border: '1px solid #f0b90b55', borderRadius: 14, padding: '18px 20px', maxWidth: 700, width: '100%', boxShadow: '0 4px 24px #f0b90b18' },
+  onboardInner:    { display: 'flex', gap: 14, alignItems: 'flex-start' },
+  onboardIcon:     { fontSize: '2rem', flexShrink: 0 },
+  onboardTitle:    { fontSize: '0.95rem', fontWeight: 'bold', color: '#f0b90b', marginBottom: 6 },
+  onboardDesc:     { fontSize: '0.8rem', color: '#aaa', lineHeight: 1.6, marginBottom: 10 },
+  onboardClose:    { background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '1rem', flexShrink: 0, padding: 4 },
+  headerRow:       { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%', maxWidth: 700 },
+  header:          { fontFamily: 'monospace', fontSize: '1.15rem', margin: 0 },
+  subHeader:       { color: '#555', fontFamily: 'monospace', fontSize: '0.75rem', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
+  badge:           { border: '1px solid', padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontFamily: 'monospace' },
+  tgBadge:         { background: '#0d2a3e', color: '#29b6f6', border: '1px solid #29b6f6', padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontFamily: 'monospace' },
+  emailBadge:      { background: '#1a0d2e', color: '#ce93d8', border: '1px solid #ce93d8', padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontFamily: 'monospace' },
+  statusCard:      { background: '#1a1a2e', border: '1px solid #2a2a3e', borderRadius: 10, padding: '14px 18px', maxWidth: 700, width: '100%', color: '#888', fontFamily: 'monospace', fontSize: '0.85rem', display: 'flex', gap: 10, alignItems: 'center' },
+  clearBtn:        { background: 'none', border: 'none', color: '#333', fontFamily: 'monospace', fontSize: '0.72rem', cursor: 'pointer', marginTop: 6, padding: '2px 6px' },
+  footer:          { color: '#2a2a3e', fontSize: '0.72rem', fontFamily: 'monospace', textAlign: 'center', margin: 0, marginTop: 8 },
 };

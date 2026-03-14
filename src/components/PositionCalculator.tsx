@@ -1,12 +1,9 @@
 /**
  * PositionCalculator.tsx — Sprint 4: HK Futures contract-aware sizing
  *
- * Key change from crypto version:
- *   OLD (spot): quantity = riskAmount / riskPerUnit (fractional units)
- *   NEW (futures): contracts = floor(riskAmount / (riskPerPt × multiplier))
- *                  notional  = contracts × entry × multiplier
- *
- * For non-futures HK stocks, falls back to share-based sizing.
+ * Fix 2: handleAddTrade() now passes multiplier field into TradeRecord.
+ * Without this, calcPnl() in useTradeJournal defaults to multiplier=1,
+ * making live journal P&L 10× (MHI) or 50× (HSI) too small.
  */
 import React, { useState, useMemo } from 'react';
 import { SignalEvent } from '../types/binance';
@@ -24,7 +21,7 @@ interface Props {
 
 export default function PositionCalculator({ signal, lastPrice, onAddTrade, symbol, lang }: Props) {
   const [open,        setOpen]        = useState(false);
-  const [capital,     setCapital]     = useState('200000');   // HKD default
+  const [capital,     setCapital]     = useState('200000');
   const [riskPct,     setRiskPct]     = useState('2');
   const [customEntry, setCustomEntry] = useState('');
   const [customSL,    setCustomSL]    = useState('');
@@ -34,19 +31,16 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
 
   const isEN = lang === 'EN';
 
-  // Contract spec — falls back to a sensible stock default if symbol not in map
   const spec: ContractSpec = CONTRACT_SPECS[symbol as FutuSymbol] ?? {
     multiplier: 1, tickSize: 0.1, currency: 'HKD', marginEstHKD: 0, isFutures: false,
   };
-  const isFutures    = spec.isFutures;
-  const multiplier   = spec.multiplier;
-  const currencySymbol = 'HK$';
+  const isFutures  = spec.isFutures;
+  const multiplier = spec.multiplier;
 
   const entryPrice = parseFloat(customEntry) || signal?.price || lastPrice || 0;
   const capitalNum = parseFloat(capital) || 0;
   const riskPctNum = parseFloat(riskPct)  || 2;
 
-  // Default SL/TP: tighter for futures (0.5% / 1.5%) vs stocks (1% / 3%)
   const slPct = isFutures ? 0.005 : 0.01;
   const tpPct = isFutures ? 0.015 : 0.03;
   const defaultSL = entryPrice > 0 ? (tradeType === 'LONG' ? entryPrice * (1 - slPct) : entryPrice * (1 + slPct)) : 0;
@@ -57,14 +51,12 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
   const calc = useMemo(() => {
     if (!entryPrice || !sl || !tp || capitalNum <= 0) return null;
 
-    const riskPerUnit   = Math.abs(entryPrice - sl);   // index points or price units
+    const riskPerUnit   = Math.abs(entryPrice - sl);
     const rewardPerUnit = Math.abs(tp - entryPrice);
     const rr            = riskPerUnit > 0 ? rewardPerUnit / riskPerUnit : 0;
     const riskAmount    = capitalNum * (riskPctNum / 100);
 
     if (isFutures) {
-      // ── Futures sizing ────────────────────────────────────────────────────
-      // 1 contract moves by riskPerUnit pts × HK$multiplier per pt
       const riskPerContract = riskPerUnit * multiplier;
       const contracts       = riskPerContract > 0 ? Math.max(1, Math.floor(riskAmount / riskPerContract)) : 0;
       const notional        = contracts * entryPrice * multiplier;
@@ -72,10 +64,8 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
       const maxGain         = contracts * rewardPerUnit * multiplier;
       const marginRequired  = contracts * spec.marginEstHKD;
       const maxContracts    = riskPerContract > 0 ? Math.floor(capitalNum / riskPerContract) : 0;
-
       return {
-        contracts,
-        maxContracts,
+        contracts, maxContracts,
         notional:        Math.round(notional),
         maxLoss:         Math.round(maxLoss),
         maxGain:         Math.round(maxGain),
@@ -83,16 +73,15 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
         marginRequired:  Math.round(marginRequired),
         riskAmount:      Math.round(riskAmount),
         riskPerContract: Math.round(riskPerContract),
-        sl:              parseFloat(sl.toFixed(0)),
-        tp:              parseFloat(tp.toFixed(0)),
-        isFutures:       true as const,
+        sl: parseFloat(sl.toFixed(0)),
+        tp: parseFloat(tp.toFixed(0)),
+        isFutures: true as const,
       };
     } else {
-      // ── Stock / share sizing (non-futures HK stocks) ──────────────────────
-      const shares        = riskPerUnit > 0 ? Math.floor(riskAmount / riskPerUnit) : 0;
-      const positionSize  = shares * entryPrice;
-      const maxLoss       = shares * riskPerUnit;
-      const maxGain       = shares * rewardPerUnit;
+      const shares       = riskPerUnit > 0 ? Math.floor(riskAmount / riskPerUnit) : 0;
+      const positionSize = shares * entryPrice;
+      const maxLoss      = shares * riskPerUnit;
+      const maxGain      = shares * rewardPerUnit;
       return {
         contracts:       shares,
         maxContracts:    Math.floor(capitalNum / entryPrice),
@@ -103,24 +92,37 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
         marginRequired:  0,
         riskAmount:      parseFloat(riskAmount.toFixed(2)),
         riskPerContract: parseFloat(riskPerUnit.toFixed(2)),
-        sl:              parseFloat(sl.toFixed(2)),
-        tp:              parseFloat(tp.toFixed(2)),
-        isFutures:       false as const,
+        sl: parseFloat(sl.toFixed(2)),
+        tp: parseFloat(tp.toFixed(2)),
+        isFutures: false as const,
       };
     }
   }, [entryPrice, sl, tp, capitalNum, riskPctNum, tradeType, isFutures, multiplier]);
 
+  // Fix 2: multiplier is now written into the TradeRecord so calcPnl() in
+  // useTradeJournal uses futures-correct P&L: ptDiff × multiplier × quantity.
   const handleAddTrade = () => {
     if (!calc || !entryPrice) return;
     onAddTrade({
-      symbol, type: tradeType, entryPrice,
-      exitPrice: null, stopLoss: calc.sl, takeProfit: calc.tp,
-      capitalUsed: calc.notional, quantity: calc.contracts,
-      result: 'OPEN', pnl: null, pnlPct: null,
-      openTime: Math.floor(Date.now() / 1000), closeTime: null,
+      symbol,
+      type:        tradeType,
+      entryPrice,
+      exitPrice:   null,
+      stopLoss:    calc.sl,
+      takeProfit:  calc.tp,
+      capitalUsed: calc.notional,
+      quantity:    calc.contracts,
+      multiplier,                  // ← Fix 2: was missing, caused 10×/50× wrong P&L
+      result:      'OPEN',
+      pnl:         null,
+      pnlPct:      null,
+      openTime:    Math.floor(Date.now() / 1000),
+      closeTime:   null,
       notes: signal
-        ? `Signal @ MA${signal.ma.toFixed(0)} · ${isFutures ? `${calc.contracts} contracts` : `${calc.contracts} shares`}`
-        : 'Manual entry',
+        ? `Signal @ MA${signal.ma.toFixed(0)} · ${isFutures
+            ? `${calc.contracts} contracts × HK$${multiplier}/pt`
+            : `${calc.contracts} shares`}`
+        : `Manual entry · ${isFutures ? `${calc.contracts} contracts × HK$${multiplier}/pt` : `${calc.contracts} shares`}`,
     });
     setAdded(true);
     setTimeout(() => setAdded(false), 3000);
@@ -139,7 +141,6 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
       {open && (
         <div style={styles.body}>
 
-          {/* ── Contract spec banner (futures only) ── */}
           {isFutures && (
             <div style={styles.specBanner}>
               <span style={{ fontSize: '1.1rem' }}>📋</span>
@@ -148,26 +149,10 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
                   {isEN ? 'Contract Specification:' : '合約規格：'} {symbol}
                 </span>
                 <div style={styles.specGrid}>
-                  <SpecChip
-                    icon="💵" label={isEN ? 'HKD per point' : '每點金額'}
-                    value={`HK$${multiplier}`}
-                    desc={isEN ? `1 contract moves HK$${multiplier} per index point` : `每張合約每點移動HK$${multiplier}`}
-                  />
-                  <SpecChip
-                    icon="🔒" label={isEN ? 'Est. Margin / contract' : '每張保證金(估)'}
-                    value={`HK$${spec.marginEstHKD.toLocaleString()}`}
-                    desc={isEN ? 'Required margin per contract (approx, check Futu for latest)' : '每張合約所需保證金（估算，以富途為準）'}
-                  />
-                  <SpecChip
-                    icon="📏" label={isEN ? 'Tick size' : '最小波動'}
-                    value={`${spec.tickSize} pt = HK$${spec.tickSize * multiplier}`}
-                    desc={isEN ? 'Minimum price movement' : '最小價格變動'}
-                  />
-                  <SpecChip
-                    icon="⚡" label={isEN ? 'Leverage' : '槓桿'}
-                    value={entryPrice > 0 ? `~${Math.round((entryPrice * multiplier) / spec.marginEstHKD)}×` : '---'}
-                    desc={isEN ? 'Approx leverage at current level' : '當前水平的估算槓桿倍數'}
-                  />
+                  <SpecChip icon="💵" label={isEN ? 'HKD per point' : '每點金額'} value={`HK$${multiplier}`} desc={isEN ? `1 contract moves HK$${multiplier} per index point` : `每張合約每點移動HK$${multiplier}`} />
+                  <SpecChip icon="🔒" label={isEN ? 'Est. Margin / contract' : '每張保證金(估)'} value={`HK$${spec.marginEstHKD.toLocaleString()}`} desc={isEN ? 'Required margin per contract (approx, check Futu for latest)' : '每張合約所需保證金（估算，以富途為準）'} />
+                  <SpecChip icon="📏" label={isEN ? 'Tick size' : '最小波動'} value={`${spec.tickSize} pt = HK$${spec.tickSize * multiplier}`} desc={isEN ? 'Minimum price movement' : '最小價格變動'} />
+                  <SpecChip icon="⚡" label={isEN ? 'Leverage' : '槓桿'} value={entryPrice > 0 ? `~${Math.round((entryPrice * multiplier) / spec.marginEstHKD)}×` : '---'} desc={isEN ? 'Approx leverage at current level' : '當前水平的估算槓桿倍數'} />
                 </div>
                 <div style={styles.futuresTip}>
                   {isEN
@@ -178,7 +163,6 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
             </div>
           )}
 
-          {/* ── Beginner tip (non-futures) ── */}
           {!isFutures && (
             <div style={styles.starterTip}>
               <span style={{ fontSize: '1.1rem' }}>🌱</span>
@@ -187,7 +171,7 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
                   {isEN ? 'Recommended settings:' : '建議設定：'}
                 </span>
                 <div style={styles.tipGrid}>
-                  <TipChip icon="💰" label={isEN ? 'Capital' : '資本'} value={`HK$100,000`} desc={isEN ? 'Typical HK stock lot size sizing' : '港股典型手數規模'} />
+                  <TipChip icon="💰" label={isEN ? 'Capital' : '資本'} value="HK$100,000" desc={isEN ? 'Typical HK stock lot size sizing' : '港股典型手數規模'} />
                   <TipChip icon="⚠️" label={isEN ? 'Risk %' : '風險 %'} value="2%" desc={isEN ? 'Risk 2% per trade' : '每次交易風險2%'} />
                   <TipChip icon="🛑" label={isEN ? 'Stop Loss' : '止蝕'} value="1%" desc={isEN ? 'Exit if 1% against you' : '逆向1%時止蝕'} />
                   <TipChip icon="🎯" label={isEN ? 'Take Profit' : '止盈'} value={isEN ? '3% (3:1 R:R)' : '3%（3:1 風報比）'} desc={isEN ? 'Target 3× your risk' : '目標風險的3倍'} />
@@ -196,38 +180,27 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
             </div>
           )}
 
-          {/* ── Input fields ── */}
           <div style={styles.grid}>
             <Field label={`${tr('totalCapital', lang)}`} tooltip={tr('totalCapTip', lang)}>
-              <input style={styles.input} type="number" value={capital}
-                onChange={(e) => setCapital(e.target.value)}
-                placeholder={isFutures ? '200000' : '100000'} />
+              <input style={styles.input} type="number" value={capital} onChange={(e) => setCapital(e.target.value)} placeholder={isFutures ? '200000' : '100000'} />
               <span style={styles.fieldHint}>
                 {isFutures
                   ? (isEN ? `💡 Your total trading capital in HKD. Est. margin per contract: HK$${spec.marginEstHKD.toLocaleString()}` : `💡 您的HKD總交易資金。每張合約估算保證金：HK$${spec.marginEstHKD.toLocaleString()}`)
                   : (isEN ? '💡 Total capital in HKD for this trade' : '💡 此次交易的港幣總資金')}
               </span>
             </Field>
-
             <Field label={tr('riskPct', lang)} tooltip={tr('riskPctTip', lang)}>
-              <input style={styles.input} type="number" value={riskPct}
-                min="0.1" max="100" step="0.5"
-                onChange={(e) => setRiskPct(e.target.value)}
-                placeholder="2" />
+              <input style={styles.input} type="number" value={riskPct} min="0.1" max="100" step="0.5" onChange={(e) => setRiskPct(e.target.value)} placeholder="2" />
               <span style={styles.fieldHint}>
                 {isEN
                   ? `💡 2% of HK$${Number(capital).toLocaleString()} = HK$${Math.round(Number(capital) * 0.02).toLocaleString()} at risk`
                   : `💡 總資金HK$${Number(capital).toLocaleString()}的2% = HK$${Math.round(Number(capital) * 0.02).toLocaleString()}風險金額`}
               </span>
             </Field>
-
             <Field label={tr('direction', lang)}>
               <div style={{ display: 'flex', gap: 6 }}>
                 {(['LONG', 'SHORT'] as const).map((type) => (
-                  <button key={type} onClick={() => setTradeType(type)} style={{
-                    ...styles.typeBtn,
-                    ...(tradeType === type ? (type === 'LONG' ? styles.longActive : styles.shortActive) : {}),
-                  }}>
+                  <button key={type} onClick={() => setTradeType(type)} style={{ ...styles.typeBtn, ...(tradeType === type ? (type === 'LONG' ? styles.longActive : styles.shortActive) : {}) }}>
                     {type === 'LONG' ? tr('long', lang) : tr('short', lang)}
                   </button>
                 ))}
@@ -238,127 +211,71 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
                   : (isEN ? 'Match the signal direction above' : '請與上方訊號方向一致')}
               </span>
             </Field>
-
-            <Field label={isFutures ? (isEN ? 'Entry Level (index pts)' : '入場指數點位') : tr('entryPrice', lang)}
-              tooltip={tr('entryTip', lang)}>
-              <input style={styles.input} type="number" value={customEntry}
-                onChange={(e) => setCustomEntry(e.target.value)}
-                placeholder={entryPrice > 0 ? entryPrice.toFixed(isFutures ? 0 : 2) : tr('autoPrice', lang)} />
+            <Field label={isFutures ? (isEN ? 'Entry Level (index pts)' : '入場指數點位') : tr('entryPrice', lang)} tooltip={tr('entryTip', lang)}>
+              <input style={styles.input} type="number" value={customEntry} onChange={(e) => setCustomEntry(e.target.value)} placeholder={entryPrice > 0 ? entryPrice.toFixed(isFutures ? 0 : 2) : tr('autoPrice', lang)} />
             </Field>
-
             <Field label={slLabel} tooltip={tr('slTip', lang)}>
-              <input style={styles.input} type="number" value={customSL}
-                onChange={(e) => setCustomSL(e.target.value)}
-                placeholder={defaultSL > 0 ? defaultSL.toFixed(isFutures ? 0 : 2) : tr('autoPrice', lang)} />
+              <input style={styles.input} type="number" value={customSL} onChange={(e) => setCustomSL(e.target.value)} placeholder={defaultSL > 0 ? defaultSL.toFixed(isFutures ? 0 : 2) : tr('autoPrice', lang)} />
             </Field>
-
             <Field label={tpLabel} tooltip={tr('tpTip', lang)}>
-              <input style={styles.input} type="number" value={customTP}
-                onChange={(e) => setCustomTP(e.target.value)}
-                placeholder={defaultTP > 0 ? defaultTP.toFixed(isFutures ? 0 : 2) : tr('autoPrice', lang)} />
+              <input style={styles.input} type="number" value={customTP} onChange={(e) => setCustomTP(e.target.value)} placeholder={defaultTP > 0 ? defaultTP.toFixed(isFutures ? 0 : 2) : tr('autoPrice', lang)} />
             </Field>
           </div>
 
-          {/* ── Results ── */}
           {calc && (
             <>
               <div style={styles.divider} />
               <div style={styles.resultTitle}>{tr('calcResults', lang)}</div>
 
               {calc.isFutures ? (
-                // ── Futures results layout ──────────────────────────────────
                 <>
-                  {/* Primary: contracts */}
                   <div style={styles.contractsHero}>
                     <div style={styles.contractsNum}>{calc.contracts}</div>
                     <div style={styles.contractsSub}>
-                      <span style={{ color: '#f0b90b', fontWeight: 'bold' }}>
-                        {isEN ? 'contracts recommended' : '張合約（建議）'}
-                      </span>
-                      <span style={{ color: '#555', fontSize: '0.72rem' }}>
-                        {isEN ? `(max ${calc.maxContracts} within 2% risk)` : `（2%風險內最多 ${calc.maxContracts} 張）`}
-                      </span>
+                      <span style={{ color: '#f0b90b', fontWeight: 'bold' }}>{isEN ? 'contracts recommended' : '張合約（建議）'}</span>
+                      <span style={{ color: '#555', fontSize: '0.72rem' }}>{isEN ? `(max ${calc.maxContracts} within 2% risk)` : `（2%風險內最多 ${calc.maxContracts} 張）`}</span>
                     </div>
                   </div>
-
                   <div style={styles.resultGrid}>
-                    <ResultCard
-                      label={isEN ? 'Notional Value' : '名義價值'}
-                      value={`${currencySymbol}${calc.notional.toLocaleString()}`}
-                      sub={isEN ? `${calc.contracts} × ${entryPrice.toFixed(0)} × HK$${multiplier}/pt` : `${calc.contracts}張 × ${entryPrice.toFixed(0)} × HK$${multiplier}/點`}
-                    />
-                    <ResultCard
-                      label={isEN ? 'Margin Required' : '所需保證金'}
-                      value={`${currencySymbol}${calc.marginRequired.toLocaleString()}`}
-                      sub={isEN ? `${calc.contracts} × HK$${spec.marginEstHKD.toLocaleString()}/contract` : `${calc.contracts}張 × HK$${spec.marginEstHKD.toLocaleString()}/張`}
-                      color="#f0b90b"
-                    />
-                    <ResultCard
-                      label={tr('maxLoss', lang)}
-                      value={`-${currencySymbol}${calc.maxLoss.toLocaleString()}`}
-                      color="#ff1744"
-                      sub={isEN ? `${Math.abs(entryPrice - calc.sl).toFixed(0)} pts × HK$${multiplier} × ${calc.contracts} contracts` : `${Math.abs(entryPrice - calc.sl).toFixed(0)}點 × HK$${multiplier} × ${calc.contracts}張`}
-                    />
-                    <ResultCard
-                      label={tr('maxGain', lang)}
-                      value={`+${currencySymbol}${calc.maxGain.toLocaleString()}`}
-                      color="#00c853"
-                      sub={isEN ? `${Math.abs(calc.tp - entryPrice).toFixed(0)} pts × HK$${multiplier} × ${calc.contracts} contracts` : `${Math.abs(calc.tp - entryPrice).toFixed(0)}點 × HK$${multiplier} × ${calc.contracts}張`}
-                    />
-                    <ResultCard
-                      label={tr('rrRatio', lang)}
-                      value={`${calc.rr}:1`}
-                      color={calc.rr >= 2 ? '#00c853' : '#ff9800'}
-                      sub={calc.rr >= 2 ? tr('rrIdeal', lang) : tr('rrLow', lang)}
-                    />
-                    <ResultCard
-                      label={isEN ? 'Risk per Contract' : '每張風險'}
-                      value={`${currencySymbol}${calc.riskPerContract.toLocaleString()}`}
-                      sub={isEN ? `${Math.abs(entryPrice - calc.sl).toFixed(0)} pts × HK$${multiplier}` : `${Math.abs(entryPrice - calc.sl).toFixed(0)}點 × HK$${multiplier}`}
-                    />
+                    <ResultCard label={isEN ? 'Notional Value' : '名義價值'} value={`HK$${calc.notional.toLocaleString()}`} sub={isEN ? `${calc.contracts} × ${entryPrice.toFixed(0)} × HK$${multiplier}/pt` : `${calc.contracts}張 × ${entryPrice.toFixed(0)} × HK$${multiplier}/點`} />
+                    <ResultCard label={isEN ? 'Margin Required' : '所需保證金'} value={`HK$${calc.marginRequired.toLocaleString()}`} sub={isEN ? `${calc.contracts} × HK$${spec.marginEstHKD.toLocaleString()}/contract` : `${calc.contracts}張 × HK$${spec.marginEstHKD.toLocaleString()}/張`} color="#f0b90b" />
+                    <ResultCard label={tr('maxLoss', lang)} value={`-HK$${calc.maxLoss.toLocaleString()}`} color="#ff1744" sub={isEN ? `${Math.abs(entryPrice - calc.sl).toFixed(0)} pts × HK$${multiplier} × ${calc.contracts} contracts` : `${Math.abs(entryPrice - calc.sl).toFixed(0)}點 × HK$${multiplier} × ${calc.contracts}張`} />
+                    <ResultCard label={tr('maxGain', lang)} value={`+HK$${calc.maxGain.toLocaleString()}`} color="#00c853" sub={isEN ? `${Math.abs(calc.tp - entryPrice).toFixed(0)} pts × HK$${multiplier} × ${calc.contracts} contracts` : `${Math.abs(calc.tp - entryPrice).toFixed(0)}點 × HK$${multiplier} × ${calc.contracts}張`} />
+                    <ResultCard label={tr('rrRatio', lang)} value={`${calc.rr}:1`} color={calc.rr >= 2 ? '#00c853' : '#ff9800'} sub={calc.rr >= 2 ? tr('rrIdeal', lang) : tr('rrLow', lang)} />
+                    <ResultCard label={isEN ? 'Risk per Contract' : '每張風險'} value={`HK$${calc.riskPerContract.toLocaleString()}`} sub={isEN ? `${Math.abs(entryPrice - calc.sl).toFixed(0)} pts × HK$${multiplier}` : `${Math.abs(entryPrice - calc.sl).toFixed(0)}點 × HK$${multiplier}`} />
                   </div>
-
-                  {/* Per-point P&L callout */}
                   <div style={styles.pplBox}>
                     <span style={{ fontSize: '1rem' }}>⚡</span>
                     <div style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>
                       <span style={{ color: '#888' }}>{isEN ? '1 index point move = ' : '指數每移動1點 = '}</span>
-                      <span style={{ color: '#f0b90b', fontWeight: 'bold' }}>
-                        {isEN ? `HK$${multiplier * calc.contracts} P&L` : `HK$${multiplier * calc.contracts} 盈虧`}
-                      </span>
-                      <span style={{ color: '#444', fontSize: '0.72rem', marginLeft: 8 }}>
-                        ({calc.contracts} {isEN ? 'contracts' : '張'} × HK${multiplier}/pt)
-                      </span>
+                      <span style={{ color: '#f0b90b', fontWeight: 'bold' }}>{isEN ? `HK$${multiplier * calc.contracts} P&L` : `HK$${multiplier * calc.contracts} 盈虧`}</span>
+                      <span style={{ color: '#444', fontSize: '0.72rem', marginLeft: 8 }}>({calc.contracts} {isEN ? 'contracts' : '張'} × HK${multiplier}/pt)</span>
                     </div>
                   </div>
                 </>
               ) : (
-                // ── Stock results layout ────────────────────────────────────
                 <div style={styles.resultGrid}>
-                  <ResultCard label={isEN ? 'Position Size' : '倉位大小'} value={`${currencySymbol}${calc.notional.toLocaleString()}`} sub={isEN ? 'HKD position size' : 'HKD倉位大小'} />
-                  <ResultCard label={tr('maxLoss', lang)} value={`-${currencySymbol}${calc.maxLoss}`} color="#ff1744" sub={`${tr('capitalPct', lang)} ${riskPct}%`} />
-                  <ResultCard label={tr('maxGain', lang)} value={`+${currencySymbol}${calc.maxGain}`} color="#00c853" sub={`${tr('capitalPct', lang)} ${((calc.maxGain / capitalNum) * 100).toFixed(1)}%`} />
+                  <ResultCard label={isEN ? 'Position Size' : '倉位大小'} value={`HK$${calc.notional.toLocaleString()}`} sub={isEN ? 'HKD position size' : 'HKD倉位大小'} />
+                  <ResultCard label={tr('maxLoss', lang)} value={`-HK$${calc.maxLoss}`} color="#ff1744" sub={`${tr('capitalPct', lang)} ${riskPct}%`} />
+                  <ResultCard label={tr('maxGain', lang)} value={`+HK$${calc.maxGain}`} color="#00c853" sub={`${tr('capitalPct', lang)} ${((calc.maxGain / capitalNum) * 100).toFixed(1)}%`} />
                   <ResultCard label={tr('rrRatio', lang)} value={`${calc.rr}:1`} color={calc.rr >= 2 ? '#00c853' : '#ff9800'} sub={calc.rr >= 2 ? tr('rrIdeal', lang) : tr('rrLow', lang)} />
                   <ResultCard label={isEN ? 'Shares' : '股數'} value={calc.contracts.toLocaleString()} sub={`${symbol} shares`} />
-                  <ResultCard label={tr('riskAmt', lang)} value={`${currencySymbol}${calc.riskAmount}`} sub={tr('maxRiskSub', lang)} />
+                  <ResultCard label={tr('riskAmt', lang)} value={`HK$${calc.riskAmount}`} sub={tr('maxRiskSub', lang)} />
                 </div>
               )}
 
-              {/* R:R visual bar */}
               <div style={styles.rrBar}>
                 <div style={styles.rrLabel}>
-                  <span style={{ color: '#ff1744' }}>-{currencySymbol}{calc.maxLoss.toLocaleString()}</span>
+                  <span style={{ color: '#ff1744' }}>-HK${calc.maxLoss.toLocaleString()}</span>
                   <span style={{ color: '#888' }}>@ {entryPrice.toFixed(isFutures ? 0 : 2)}</span>
-                  <span style={{ color: '#00c853' }}>+{currencySymbol}{calc.maxGain.toLocaleString()}</span>
+                  <span style={{ color: '#00c853' }}>+HK${calc.maxGain.toLocaleString()}</span>
                 </div>
                 <div style={styles.rrTrack}>
                   <div style={{ ...styles.rrLoss, width: `${(1 / (1 + calc.rr)) * 100}%` }} />
                   <div style={{ ...styles.rrWin,  width: `${(calc.rr / (1 + calc.rr)) * 100}%` }} />
                 </div>
                 <div style={{ ...styles.rrLabel, justifyContent: 'center', marginTop: 4 }}>
-                  <span style={{ color: '#888', fontSize: '0.72rem' }}>
-                    {tr('rrVisual', lang)} — {tr('rrVisualSub', lang)}{calc.rr}
-                  </span>
+                  <span style={{ color: '#888', fontSize: '0.72rem' }}>{tr('rrVisual', lang)} — {tr('rrVisualSub', lang)}{calc.rr}</span>
                 </div>
               </div>
 
@@ -373,7 +290,6 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
   );
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
 function SpecChip({ icon, label, value, desc }: { icon: string; label: string; value: string; desc: string }) {
   return (
     <div style={{ background: '#0f0f1a', border: '1px solid #f0b90b22', borderRadius: 8, padding: '8px 10px' }}>
@@ -383,7 +299,6 @@ function SpecChip({ icon, label, value, desc }: { icon: string; label: string; v
     </div>
   );
 }
-
 function TipChip({ icon, label, value, desc }: { icon: string; label: string; value: string; desc: string }) {
   return (
     <div style={{ background: '#0f0f1a', border: '1px solid #f0b90b22', borderRadius: 8, padding: '8px 10px' }}>
@@ -393,7 +308,6 @@ function TipChip({ icon, label, value, desc }: { icon: string; label: string; va
     </div>
   );
 }
-
 function Field({ label, tooltip, children }: { label: string; tooltip?: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -404,7 +318,6 @@ function Field({ label, tooltip, children }: { label: string; tooltip?: string; 
     </div>
   );
 }
-
 function ResultCard({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
   return (
     <div style={{ background: '#0f0f1a', borderRadius: 8, padding: '10px 12px', border: '1px solid #1a1a2e', display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -432,7 +345,6 @@ const styles: Record<string, React.CSSProperties> = {
   shortActive:    { background: '#3d0d0d', border: '1px solid #ff1744', color: '#ff1744' },
   divider:        { borderTop: '1px solid #1a1a2e' },
   resultTitle:    { fontSize: '0.75rem', color: '#555', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1 },
-  // Futures contract hero
   contractsHero:  { display: 'flex', alignItems: 'center', gap: 12, background: '#0f0f1a', border: '1px solid #f0b90b44', borderRadius: 10, padding: '12px 16px' },
   contractsNum:   { fontSize: '3rem', fontWeight: 'bold', color: '#f0b90b', fontFamily: 'monospace', lineHeight: 1 },
   contractsSub:   { display: 'flex', flexDirection: 'column', gap: 4 },
