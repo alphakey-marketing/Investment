@@ -4,6 +4,7 @@ export interface TradeRecord {
   id: string;
   symbol: string;
   type: 'LONG' | 'SHORT';
+    tradeType?: 'live' | 'paper' | 'backtest';  // C1: discriminates source without fragile .notes parsing
   entryPrice: number;
   exitPrice: number | null;     // null = still open
   stopLoss: number;
