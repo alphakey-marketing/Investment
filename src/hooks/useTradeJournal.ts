@@ -6,8 +6,11 @@ const STORAGE_KEY = 'kma_trade_journal';
 function loadTrades(): TradeRecord[] {
   try {
     const s = localStorage.getItem(STORAGE_KEY);
-    return s ? JSON.parse(s) : [];
-  } catch { return []; }
+    return s ? JSON.parse(s).map((t: TradeRecord) => ({
+            ...t,
+      multiplier: t.multiplier ?? 1,  // C2: migrate old records missing multiplier
+    })) : [];
+    } catch { return []; }
 }
 
 function saveTrades(trades: TradeRecord[]) {
