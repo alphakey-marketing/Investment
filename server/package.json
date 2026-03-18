@@ -9,8 +9,9 @@
     "dev":   "node --watch index.js"
   },
   "dependencies": {
-    "cors":     "^2.8.5",
-    "express":  "^4.18.2",
-    "futu-api": "^2.0.10"
+    "cors":               "^2.8.5",
+    "express":            "^4.18.2",
+    "express-rate-limit": "^7.3.1",
+    "futu-api":           "^2.0.10"
   }
 }
