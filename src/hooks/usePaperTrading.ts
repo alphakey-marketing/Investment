@@ -1,111 +1,91 @@
-/**
- * usePaperTrading — paper trading state hook
- *
- * FUTURES P&L FIX:
- *   - quantity = floor(capital / marginEstHKD)  → number of contracts, not capital/price
- *   - closePosition P&L = (priceDiff) × multiplier × contracts
- *   - Falls back gracefully to stock formula when multiplier = 1
- */
-import { useState, useMemo } from 'react';
-import { PaperAccount, OpenPosition } from '../types/mode';
+import { useState, useCallback } from 'react';
+import { PaperAccount, PaperPosition } from '../types/mode';
 import { TradeRecord } from '../types/trade';
-import { FutuSymbol, CONTRACT_SPECS } from '../types/futu';
 
-const STORAGE_KEY = 'paper_account_v2';
+const STORAGE_KEY = 'kma_paper_account';
+const DEFAULT_BALANCE = 10000;
 
 function loadAccount(): PaperAccount {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  return { balance: 500_000, initialBalance: 500_000, openPosition: null };
+    const s = localStorage.getItem(STORAGE_KEY);
+    return s ? JSON.parse(s) : { balance: DEFAULT_BALANCE, initialBalance: DEFAULT_BALANCE, openPosition: null };
+  } catch {
+    return { balance: DEFAULT_BALANCE, initialBalance: DEFAULT_BALANCE, openPosition: null };
+  }
 }
 
-function saveAccount(acc: PaperAccount) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(acc));
+function save(acc: PaperAccount) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(acc)); } catch {}
 }
 
-export function usePaperTrading(addTrade: (t: Omit<TradeRecord, 'id'>) => void) {
+export function usePaperTrading(
+  addRealTrade: (t: Omit<TradeRecord, 'id'>) => void
+) {
   const [account, setAccount] = useState<PaperAccount>(loadAccount);
 
-  const persist = (acc: PaperAccount) => { setAccount(acc); saveAccount(acc); };
+  const update = (acc: PaperAccount) => { setAccount(acc); save(acc); };
 
-  const openPosition = (
+  const openPosition = useCallback((
     symbol: string,
     type: 'LONG' | 'SHORT',
     price: number,
-    capital: number,
+    capitalUsed: number,
     sl: number,
     tp: number
   ) => {
-    if (account.openPosition) return;     // one position at a time
-    if (capital > account.balance) return;
-
-    const spec   = CONTRACT_SPECS[symbol as FutuSymbol];
-    const isFut  = spec?.isFutures ?? false;
-    const mult   = spec?.multiplier ?? 1;
-    const margin = spec?.marginEstHKD ?? 0;
-
-    // For futures: quantity = number of contracts (already chosen by UI via capitalForOpen)
-    // For stocks:  quantity = capital / price
-    const quantity = isFut
-      ? (margin > 0 ? Math.max(1, Math.floor(capital / margin)) : 1)
-      : (price > 0 ? capital / price : 0);
-
-    const pos: OpenPosition = {
-      symbol, type, entryPrice: price, stopLoss: sl, takeProfit: tp,
-      quantity, capitalUsed: capital,
-      openTime: Math.floor(Date.now() / 1000),
-    };
-    persist({ ...account, balance: account.balance - capital, openPosition: pos });
-  };
-
-  const closePosition = (exitPrice: number) => {
-    const pos = account.openPosition;
-    if (!pos) return;
-
-    const spec = CONTRACT_SPECS[pos.symbol as FutuSymbol];
-    const mult = spec?.multiplier ?? 1;
-
-    // Futures: P&L = point difference × HKD-per-point × contracts
-    // Stocks:  P&L = price difference × shares  (multiplier = 1)
-    const pnl = pos.type === 'LONG'
-      ? (exitPrice - pos.entryPrice) * mult * pos.quantity
-      : (pos.entryPrice - exitPrice) * mult * pos.quantity;
-
-    const newBalance = account.balance + pos.capitalUsed + pnl;
-    const pnlPct     = pos.capitalUsed > 0
-      ? parseFloat(((pnl / pos.capitalUsed) * 100).toFixed(2))
-      : 0;
-
-    addTrade({
-      symbol:      pos.symbol,
-      type:        pos.type,
-      entryPrice:  pos.entryPrice,
-      exitPrice,
-      stopLoss:    pos.stopLoss,
-      takeProfit:  pos.takeProfit,
-      capitalUsed: pos.capitalUsed,
-      quantity:    pos.quantity,
-      multiplier:  mult,
-      result:      pnl >= 0 ? 'WIN' : 'LOSS',
-      pnl:         parseFloat(pnl.toFixed(2)),
-      pnlPct,
-      openTime:    pos.openTime,
-      closeTime:   Math.floor(Date.now() / 1000),
-      notes:       `[paper] Closed @ ${exitPrice}`,
+    setAccount((prev) => {
+      if (prev.openPosition) return prev; // already in trade
+      if (capitalUsed > prev.balance) return prev; // not enough
+      const quantity = capitalUsed / price;
+      const pos: PaperPosition = {
+        id: Date.now().toString(),
+        symbol, type, entryPrice: price, quantity,
+        capitalUsed, stopLoss: sl, takeProfit: tp,
+        openTime: Math.floor(Date.now() / 1000),
+      };
+      const acc = { ...prev, balance: prev.balance - capitalUsed, openPosition: pos };
+      save(acc);
+      return acc;
     });
-    persist({ ...account, balance: newBalance, openPosition: null });
-  };
+  }, []);
 
-  const resetAccount = (newBalance = 500_000) => {
-    persist({ balance: newBalance, initialBalance: newBalance, openPosition: null });
-  };
+  const closePosition = useCallback((exitPrice: number) => {
+    setAccount((prev) => {
+      const pos = prev.openPosition;
+      if (!pos) return prev;
+      const rawPnl = pos.type === 'LONG'
+        ? (exitPrice - pos.entryPrice) * pos.quantity
+        : (pos.entryPrice - exitPrice) * pos.quantity;
+      const pnl = parseFloat(rawPnl.toFixed(2));
+      const pnlPct = parseFloat(((pnl / pos.capitalUsed) * 100).toFixed(2));
+      const returnCapital = pos.capitalUsed + pnl;
 
-  const pnl    = parseFloat((account.balance - account.initialBalance).toFixed(2));
+      // Also log to real trade journal
+      addRealTrade({
+        symbol: pos.symbol, type: pos.type,
+        entryPrice: pos.entryPrice, exitPrice,
+        stopLoss: pos.stopLoss, takeProfit: pos.takeProfit,
+        capitalUsed: pos.capitalUsed, quantity: pos.quantity,
+        result: pnl > 0 ? 'WIN' : pnl < 0 ? 'LOSS' : 'BREAK_EVEN',
+        pnl, pnlPct,
+        openTime: pos.openTime,
+        closeTime: Math.floor(Date.now() / 1000),
+        notes: '🧸 模擬交易',
+      });
+
+      const acc = { ...prev, balance: prev.balance + returnCapital, openPosition: null };
+      save(acc);
+      return acc;
+    });
+  }, [addRealTrade]);
+
+  const resetAccount = useCallback((newBalance = DEFAULT_BALANCE) => {
+    const acc = { balance: newBalance, initialBalance: newBalance, openPosition: null };
+    update(acc);
+  }, []);
+
+  const pnl = account.balance + (account.openPosition?.capitalUsed ?? 0) - account.initialBalance;
   const pnlPct = parseFloat(((pnl / account.initialBalance) * 100).toFixed(2));
-  // openPnl is computed in PaperTradingPanel directly (needs lastPrice)
-  const openPnl = useMemo(() => null, []);
 
-  return { account, openPosition, closePosition, resetAccount, pnl, pnlPct, openPnl };
+  return { account, openPosition, closePosition, resetAccount, pnl, pnlPct };
 }

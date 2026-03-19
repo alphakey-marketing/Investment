@@ -1,42 +1,42 @@
 export type AppMode = 'LIVE' | 'PAPER' | 'BACKTEST';
 
 export interface PaperAccount {
-  balance:        number;  // HKD available (cash not in position)
-  initialBalance: number;  // HKD starting balance
-  openPosition:   OpenPosition | null;
+  balance: number;           // USDT available
+  initialBalance: number;
+  openPosition: PaperPosition | null;
 }
 
-export interface OpenPosition {
-  symbol:      string;
-  type:        'LONG' | 'SHORT';
-  entryPrice:  number;
-  quantity:    number;     // shares for stocks; contracts for futures
-  capitalUsed: number;     // HKD margin / capital committed
-  stopLoss:    number;
-  takeProfit:  number;
-  openTime:    number;     // unix seconds
+export interface PaperPosition {
+  id: string;
+  symbol: string;
+  type: 'LONG' | 'SHORT';
+  entryPrice: number;
+  quantity: number;
+  capitalUsed: number;
+  stopLoss: number;
+  takeProfit: number;
+  openTime: number;
 }
 
 export interface BacktestResult {
-  totalSignals:    number;
-  wins:            number;
-  losses:          number;
-  winRate:         number;
-  totalPnl:        number;  // net of commission
-  totalPnlPct:     number;
-  maxDrawdown:     number;  // net of commission
-  profitFactor:    number;  // net of commission
-  trades:          BacktestTrade[];
-  totalCommission: number;  // Fix 5: total commission paid across all trades
+  totalSignals: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  totalPnl: number;
+  totalPnlPct: number;
+  maxDrawdown: number;
+  profitFactor: number;
+  trades: BacktestTrade[];
 }
 
 export interface BacktestTrade {
-  type:       'LONG' | 'SHORT';
-  entryTime:  number;
-  exitTime:   number;
+  type: 'LONG' | 'SHORT';
+  entryTime: number;
+  exitTime: number;
   entryPrice: number;
-  exitPrice:  number;
-  pnl:        number;        // net of commission
-  pnlPct:     number;
+  exitPrice: number;
+  pnl: number;
+  pnlPct: number;
   exitReason: 'TP' | 'SL' | 'END';
 }
