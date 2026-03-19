@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
-import { useFutuKlines } from './hooks/useFutuKlines';
+import { useYahooKlines } from './hooks/useYahooKlines';
 import { useAppState } from './hooks/useAppState';
 import { useSignalHistory } from './hooks/useSignalHistory';
 import { useTelegram } from './hooks/useTelegram';
@@ -21,7 +21,7 @@ import TradeJournal from './components/TradeJournal';
 import PaperTradingPanel from './components/PaperTradingPanel';
 import BacktestPanel from './components/BacktestPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { FutuSymbol, CONTRACT_SPECS } from './types/futu';
+import { HKTicker, CONTRACT_SPECS } from './types/hkmarket';
 import { Lang, tr } from './i18n';
 import {
   STALE_THRESHOLD_MS,
@@ -32,7 +32,7 @@ import {
 } from './constants';
 import './App.css';
 
-// ─── Beginner Roadmap ─────────────────────────────────────────────────────────────────────────────────────
+// ─── Beginner Roadmap ───────────────────────────────────────────────────────────────────────────────────────────────────────
 function BeginnerRoadmap({ lang, onDismiss }: { lang: Lang; onDismiss: () => void }) {
   const isEN = lang === 'EN';
   const [done, setDone] = React.useState<Record<number, boolean>>(() => {
@@ -50,7 +50,7 @@ function BeginnerRoadmap({ lang, onDismiss }: { lang: Lang; onDismiss: () => voi
     { icon: '📱', label: 'Set Up Telegram Alerts', sub: 'Add your bot token below', id: 'signal-panel' },
   ] : [
     { icon: '📖', label: '閱讀新手指南', sub: '向下滾動至訊號面板', id: 'signal-guide' },
-    { icon: '🔁', label: '執行回歸渫測試', sub: '切換至回歸渫測模式', id: 'mode-bar' },
+    { icon: '🔁', label: '執行回歸渠湋試', sub: '切換至回歸渠湋模式', id: 'mode-bar' },
     { icon: '🚦', label: '等待即時訊號', sub: '留在即時模式等待訊號出現', id: 'signal-panel' },
     { icon: '📱', label: '設定Telegram警報', sub: '在下方輸入Bot Token', id: 'signal-panel' },
   ];
@@ -101,35 +101,32 @@ const rmStyles: Record<string, React.CSSProperties> = {
   stepNum:  { flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
 };
 
-// ─── Data source badge sub-component ─────────────────────────────────────────────────────────────────────────
-function ChartSourceBadge({ source, lang }: { source: 'futu' | 'yahoo' | null; lang: Lang }) {
+// ─── Data source badge sub-component ────────────────────────────────────────────────────────────────────────────────────
+function ChartSourceBadge({ source, lang }: { source: 'yahoo' | null; lang: Lang }) {
   const isEN = lang === 'EN';
   if (!source) return null;
-  const isFutu = source === 'futu';
   return (
     <div style={{
       display: 'inline-flex', alignItems: 'center', gap: 5,
       fontSize: '0.65rem', fontFamily: 'monospace',
-      color: isFutu ? '#00c853' : '#f0b90b',
-      background: isFutu ? '#00c85310' : '#f0b90b10',
-      border: `1px solid ${isFutu ? '#00c85333' : '#f0b90b33'}`,
+      color: '#f0b90b',
+      background: '#f0b90b10',
+      border: '1px solid #f0b90b33',
       borderRadius: 5, padding: '2px 8px',
     }}>
-      {isFutu
-        ? (isEN ? '🟢 Futu OpenD · live 10s' : '🟢 富途即時 · 10秒更新')
-        : (isEN ? '🟡 Yahoo Finance · 60s refresh' : '🟡 Yahoo Finance · 60秒更新')}
+      {isEN ? '🟡 Yahoo Finance · 60s refresh' : '🟡 Yahoo Finance · 60秒更新'}
     </div>
   );
 }
 
-// ─── Main App ─────────────────────────────────────────────────────────────────────────────────────────
+// ─── Main App ───────────────────────────────────────────────────────────────────────────────────────────────────
 export default function App() {
   const [state, actions] = useAppState();
   const { mode, lang, symbol, klineInterval, ma1Period, ma2Period, showOnboard, showRoadmap, now } = state;
   const { setMode, setLang, setSymbol, setKlineInterval, setMa1Period, setMa2Period, dismissOnboard, dismissRoadmap, showRoadmapAgain } = actions;
 
   const { candles, loading, error, lastPrice, dataSource, lastUpdated } =
-    useFutuKlines(klineInterval, 200, symbol);
+    useYahooKlines(klineInterval, 200, symbol);
 
   const isStale = lastUpdated !== null && (now - lastUpdated.getTime()) > STALE_THRESHOLD_MS;
   const secsSinceUpdate = lastUpdated ? Math.round((now - lastUpdated.getTime()) / 1000) : null;
@@ -146,8 +143,8 @@ export default function App() {
   const lastNotifiedRef = useRef<number | null>(null);
   const isEN = lang === 'EN';
 
-  const symbolLabels: Record<FutuSymbol, string> = {
-    'HK.03081': isEN ? '🥇 Value Gold ETF' : '🥇 價値黃金ETF',
+  const symbolLabels: Record<HKTicker, string> = {
+    '3081.HK': isEN ? '🥇 Value Gold ETF' : '🥇 價値黃金ETF',
   };
   const symbolLabel = symbolLabels[symbol] ?? symbol;
   const modeColor = mode === 'LIVE' ? '#f0b90b' : mode === 'PAPER' ? '#29b6f6' : '#ab47bc';
@@ -156,7 +153,7 @@ export default function App() {
     setKlineInterval(i.toLowerCase() as any);
   };
 
-  // ── Signal notifications ─────────────────────────────────────────────────────────────
+  // ── Signal notifications ──────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (mode !== 'LIVE' || !signal) return;
     if (lastNotifiedRef.current === signal.time) return;
@@ -193,22 +190,20 @@ export default function App() {
     if (Notification.permission === 'default') Notification.requestPermission();
   }, []);
 
-  // ── Banner text ──────────────────────────────────────────────────────────────────────
+  // ── Banner text ───────────────────────────────────────────────────────────────────────────────
   const dataSourceBanner = isStale
     ? (isEN
         ? `🔴 STALE — last update ${secsSinceUpdate}s ago. Check server connection.`
         : `🔴 數据已過時 — 最後更新於 ${secsSinceUpdate} 秒前。請檢查服務器連接。`)
-    : dataSource === 'futu'
-    ? (isEN ? '🟢 Futu OpenAPI · real-time · updates every 10s' : '🟢 富途 OpenAPI · 即時 · 每10秒更新')
     : dataSource === 'yahoo'
     ? (isEN ? '🟡 Yahoo Finance · via server proxy · updates every 60s' : '🟡 Yahoo Finance · 經伺服器代理 · 每60秒更新')
     : (isEN ? '⏳ Connecting…' : '⏳ 連接中…');
 
-  const bannerColor      = isStale ? '#ff5252' : dataSource === 'futu' ? '#00c85388' : dataSource === 'yahoo' ? '#f0b90b88' : '#55555588';
-  const bannerBackground = isStale ? '#2a0000' : dataSource === 'futu' ? '#0d1a0d'   : dataSource === 'yahoo' ? '#1a1500'   : '#0f0f1a';
-  const bannerBorder     = isStale ? '#ff174422' : dataSource === 'futu' ? '#00c85322' : dataSource === 'yahoo' ? '#f0b90b22' : '#2a2a3e';
+  const bannerColor      = isStale ? '#ff5252' : dataSource === 'yahoo' ? '#f0b90b88' : '#55555588';
+  const bannerBackground = isStale ? '#2a0000' : dataSource === 'yahoo' ? '#1a1500'   : '#0f0f1a';
+  const bannerBorder     = isStale ? '#ff174422' : dataSource === 'yahoo' ? '#f0b90b22' : '#2a2a3e';
 
-  // ── Chart: show KlineChart when we have candles, loading skeleton when not ────────────────
+  // ── Chart: show KlineChart when we have candles, loading skeleton when not ──────────────────────
   const showChart = candles.length > 0;
 
   return (
@@ -231,8 +226,8 @@ export default function App() {
               </div>
               <div style={styles.onboardDesc}>
                 {isEN
-                  ? 'Analyse Value Gold ETF (03081) on HKEX via Futu Securities. Falls back to Yahoo Finance when offline. Signal alerts via Telegram & Email.'
-                  : '透過富途證券分析價値黃金ETF (03081)。離線時自動切換至 Yahoo Finance。訊號警報發送至 Telegram 與電郵。'}
+                  ? 'Analyse Value Gold ETF (3081.HK) on HKEX via Yahoo Finance. Signal alerts via Telegram & Email.'
+                  : '透過 Yahoo Finance 分析價値黃金ETF (3081.HK)。訊號警報發送至 Telegram 與電郵。'}
               </div>
             </div>
             <button onClick={dismissOnboard} style={styles.onboardClose}>✕</button>
@@ -286,16 +281,13 @@ export default function App() {
         ma1Period={ma1Period}
         ma2Period={ma2Period}
         lang={lang}
-        onSymbolChange={(s) => setSymbol(s as FutuSymbol)}
+        onSymbolChange={(s) => setSymbol(s as HKTicker)}
         onIntervalChange={handleIntervalChange}
         onMa1Change={setMa1Period}
         onMa2Change={setMa2Period}
       />
 
-      {/* ── Chart area ──
-          Primary: KlineChart fed by Yahoo Finance (via server proxy)
-          Fallback: KlineChart fed by Futu OpenD (local only)
-          Both use the same candles[] from useFutuKlines — source is transparent */}
+      {/* Chart area */}
       <div style={{ maxWidth: 700, width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{ display: 'flex', justifyContent: 'flex-end', paddingRight: 2 }}>
           <ChartSourceBadge source={dataSource} lang={lang} />
@@ -370,7 +362,6 @@ export default function App() {
         </>
       )}
 
-      {/* R2: PAPER block kept but unreachable — ModeBar no longer shows PAPER button */}
       {mode === 'PAPER' && !loading && !error && (
         <>
           <ErrorBoundary fallback="Paper panel failed">
