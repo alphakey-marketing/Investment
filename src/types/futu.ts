@@ -5,9 +5,9 @@
 export type FutuSymbol =
   | 'HK.03081';  // Value Gold ETF — physical gold backed, HKEX listed
 
-// No Yahoo fallback for HK ETF — use FutuOpenD exclusively
+// Yahoo Finance ticker for server-side fallback via /api/yahoo-klines
 export const FUTU_TO_YAHOO: Record<FutuSymbol, string | null> = {
-  'HK.03081': null,
+  'HK.03081': '3081.HK',  // Yahoo Finance ticker — server-side fetch only
 };
 
 export interface ContractSpec {
