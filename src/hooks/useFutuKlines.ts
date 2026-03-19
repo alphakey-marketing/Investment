@@ -1,15 +1,15 @@
 /**
- * useFutuKlines — HK ETF / HKEX market data hook
+ * useFutuKlines — HK ETF market data hook
  *
- * Data source priority:
- *   1. Futu proxy  /api/klines/:symbol/:interval      (real-time, 10s poll)
- *      → Requires FutuOpenD running locally
- *   2. Yahoo proxy /api/yahoo-klines/:ticker/:interval (server-side, 60s poll)
- *      → Works on Replit without FutuOpenD — no public CORS proxy needed
+ * Replit / online mode: Yahoo Finance only via server-side proxy.
+ * FutuOpenD path is commented out but preserved for local dev re-enable.
  *
- * On source switch: poll interval adjusts automatically
- *   Futu  → 10s polling
- *   Yahoo → 60s polling (Yahoo rate limit friendly)
+ * Flow:
+ *   Browser → GET /api/yahoo-klines/3081.HK/:interval
+ *          → Express server → Yahoo Finance API (server-to-server)
+ *          → Candle[] back to browser
+ *
+ * Polls every 60s (Yahoo rate-limit friendly).
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Candle } from '../types/binance';
@@ -17,54 +17,34 @@ import { FutuSymbol, FUTU_TO_YAHOO } from '../types/futu';
 
 export type HKInterval = '5m' | '15m' | '1h' | '4h' | '1d';
 
-// ── D5: proxy shared secret ─────────────────────────────────────────────────────────
-const PROXY_SECRET = import.meta.env.VITE_PROXY_SECRET ?? '';
+const YAHOO_POLL_MS = 60_000; // 60s — Yahoo rate-limit friendly
 
-const proxyHeaders = (): HeadersInit =>
-  PROXY_SECRET ? { 'x-proxy-secret': PROXY_SECRET } : {};
-
-// ── Source 1: Futu OpenD proxy ────────────────────────────────────────────────
-async function fetchFromFutuProxy(
-  symbol: string,
-  interval: HKInterval,
-  limit: number
-): Promise<Candle[]> {
-  const res = await fetch(
-    `/api/klines/${encodeURIComponent(symbol)}/${interval}?limit=${limit}`,
-    { signal: AbortSignal.timeout(5000), headers: proxyHeaders() }
-  );
-  if (!res.ok) throw new Error(`Futu proxy HTTP ${res.status}`);
-  const data: Candle[] = await res.json();
-  if (!Array.isArray(data) || data.length === 0) throw new Error('Empty Futu response');
-  return data;
-}
-
-// ── Source 2: Yahoo Finance via YOUR Express server (server-side, no CORS issue) ──
+// ── Fetch candles from server-side Yahoo proxy ───────────────────────────────────────
 async function fetchFromYahooProxy(
   ticker: string,
   interval: HKInterval
 ): Promise<Candle[]> {
   const res = await fetch(
     `/api/yahoo-klines/${encodeURIComponent(ticker)}/${interval}`,
-    { signal: AbortSignal.timeout(12000), headers: proxyHeaders() }
+    { signal: AbortSignal.timeout(15000) }
   );
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
+    const body = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(body?.error ?? `Yahoo proxy HTTP ${res.status}`);
   }
   const data: Candle[] = await res.json();
-  if (!Array.isArray(data) || data.length === 0) throw new Error('Empty Yahoo response');
+  if (!Array.isArray(data) || data.length === 0)
+    throw new Error('Yahoo proxy returned empty data');
   return data;
 }
 
-// ── Poll intervals ──────────────────────────────────────────────────────────────
-const FUTU_POLL_MS  = 10_000;  // 10s — Futu real-time
-const YAHOO_POLL_MS = 60_000;  // 60s — Yahoo rate-limit friendly
+// ── Commented out: Futu OpenD fetch (re-enable for local dev) ───────────────────────────
+// async function fetchFromFutuProxy(symbol, interval, limit) { ... }
 
 // ── Hook ────────────────────────────────────────────────────────────────────────
 export function useFutuKlines(
   interval: HKInterval = '1h',
-  limit = 200,
+  limit    = 200,
   symbol: FutuSymbol = 'HK.03081'
 ) {
   const [candles,     setCandles]     = useState<Candle[]>([]);
@@ -77,35 +57,12 @@ export function useFutuKlines(
   const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const cancelRef = useRef(false);
 
-  const scheduleNext = useCallback((source: 'futu' | 'yahoo', fn: () => void) => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(fn, source === 'futu' ? FUTU_POLL_MS : YAHOO_POLL_MS);
-  }, []);
-
   const fetchKlines = useCallback(async () => {
     const yahooTicker = FUTU_TO_YAHOO[symbol];
 
-    // ── Try Futu proxy first ───────────────────────────────────────────────
-    try {
-      const data = await fetchFromFutuProxy(symbol, interval, limit);
-      if (cancelRef.current) return;
-      setCandles(data);
-      setLastPrice(data[data.length - 1]?.close ?? null);
-      setError(null);
-      setDataSource('futu');
-      setLastUpdated(new Date());
-      scheduleNext('futu', fetchKlines);
-      return;
-    } catch {
-      // Futu proxy unavailable — fall through to Yahoo
-    }
-
-    // ── Fallback: Yahoo Finance via server-side proxy ───────────────────────
     if (!yahooTicker) {
-      if (!cancelRef.current) {
-        setError(`无 Futu 代理且沒有 Yahoo 訊磟者: ${symbol}`);
-        setLoading(false);
-      }
+      setError(`No Yahoo ticker configured for ${symbol}`);
+      setLoading(false);
       return;
     }
 
@@ -117,32 +74,38 @@ export function useFutuKlines(
       setError(null);
       setDataSource('yahoo');
       setLastUpdated(new Date());
-      scheduleNext('yahoo', fetchKlines);
-    } catch (yahooErr) {
+    } catch (err) {
       if (cancelRef.current) return;
       setError(
-        `無法載入 ${symbol} 數據: ${
-          yahooErr instanceof Error ? yahooErr.message : String(yahooErr)
-        }`
+        err instanceof Error ? err.message : String(err)
       );
-      // Do NOT update lastUpdated on failure — keeps showing stale timestamp
+      // Keep stale candles visible if we already have data
     } finally {
       if (!cancelRef.current) setLoading(false);
     }
-  }, [symbol, interval, limit, scheduleNext]);
+
+    // ── Futu OpenD priority path (commented out for Replit) ────────────────────────────
+    // To restore local priority:
+    //   1. Uncomment fetchFromFutuProxy above
+    //   2. Try Futu first, fall back to Yahoo on failure
+    //   3. Use FUTU_POLL_MS (10s) when Futu succeeds
+  }, [symbol, interval]);
 
   useEffect(() => {
     cancelRef.current = true;
     if (timerRef.current) clearInterval(timerRef.current);
+
     cancelRef.current = false;
     setLoading(true);
     setCandles([]);
     setLastPrice(null);
     setDataSource(null);
     setLastUpdated(null);
+    setError(null);
+
     fetchKlines();
-    // Start with Yahoo poll interval; fetchKlines will reschedule to Futu if available
     timerRef.current = setInterval(fetchKlines, YAHOO_POLL_MS);
+
     return () => {
       cancelRef.current = true;
       if (timerRef.current) clearInterval(timerRef.current);
