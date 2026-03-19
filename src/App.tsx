@@ -11,7 +11,7 @@ import { calculateSMA } from './utils/ma';
 import { detectSignal } from './utils/signal';
 import ModeBar from './components/ModeBar';
 import ControlBar from './components/ControlBar';
-import KlineChart from './components/KlineChart';
+import TradingViewChart from './components/TradingViewChart';
 import SignalPanel from './components/SignalPanel';
 import SignalHistory from './components/SignalHistory';
 import TelegramSettings from './components/TelegramSettings';
@@ -32,7 +32,7 @@ import {
 } from './constants';
 import './App.css';
 
-// ─── Beginner Roadmap ────────────────────────────────────────────────────────────────
+// ─── Beginner Roadmap ─────────────────────────────────────────────────────────────────────────────────────
 function BeginnerRoadmap({ lang, onDismiss }: { lang: Lang; onDismiss: () => void }) {
   const isEN = lang === 'EN';
   const [done, setDone] = React.useState<Record<number, boolean>>(() => {
@@ -46,13 +46,13 @@ function BeginnerRoadmap({ lang, onDismiss }: { lang: Lang; onDismiss: () => voi
   const steps = isEN ? [
     { icon: '📖', label: 'Read the Beginner Guide', sub: 'Scroll to Signal Panel below', id: 'signal-guide' },
     { icon: '🔁', label: 'Run a Backtest', sub: 'Switch to Backtest mode above', id: 'mode-bar' },
-    { icon: '🧸', label: 'Try Paper Trading', sub: 'Switch to Paper mode — zero real money', id: 'mode-bar' },
     { icon: '🚦', label: 'Watch for a Live Signal', sub: 'Stay in Live mode and wait', id: 'signal-panel' },
+    { icon: '📱', label: 'Set Up Telegram Alerts', sub: 'Add your bot token below', id: 'signal-panel' },
   ] : [
     { icon: '📖', label: '閱讀新手指南', sub: '向下滾動至訊號面板', id: 'signal-guide' },
-    { icon: '🔁', label: '執行回歸測試', sub: '切換至回歸測試模式', id: 'mode-bar' },
-    { icon: '🧸', label: '嘗試模擬盤交易', sub: '切換至模擬盤模式，零風險', id: 'mode-bar' },
+    { icon: '🔁', label: '執行回歸渫測試', sub: '切換至回歸渫測模式', id: 'mode-bar' },
     { icon: '🚦', label: '等待即時訊號', sub: '留在即時模式等待訊號出現', id: 'signal-panel' },
+    { icon: '📱', label: '設定Telegram警報', sub: '在下方輸入Bot Token', id: 'signal-panel' },
   ];
   const allDone = steps.every((_, i) => done[i]);
   return (
@@ -109,18 +109,16 @@ const rmStyles: Record<string, React.CSSProperties> = {
   stepNum: { flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
 };
 
-// ─── Main App ───────────────────────────────────────────────────────────────────────────────
+// ─── Main App ─────────────────────────────────────────────────────────────────────────────────────────
 export default function App() {
-  // A3: Replace 10+ useState calls with single useAppState hook
   const [state, actions] = useAppState();
   const { mode, lang, symbol, klineInterval, ma1Period, ma2Period, showOnboard, showRoadmap, now } = state;
   const { setMode, setLang, setSymbol, setKlineInterval, setMa1Period, setMa2Period, dismissOnboard, dismissRoadmap, showRoadmapAgain } = actions;
 
-  // Market data
+  // Market data — still drives signal detection, alerts, backtest even with TradingView chart
   const { candles, loading, error, lastPrice, dataSource, lastUpdated } =
     useFutuKlines(klineInterval, 200, symbol);
 
-  // Staleness check (using 'now' from useAppState)
   const isStale = lastUpdated !== null && (now - lastUpdated.getTime()) > STALE_THRESHOLD_MS;
   const secsSinceUpdate = lastUpdated ? Math.round((now - lastUpdated.getTime()) / 1000) : null;
 
@@ -136,10 +134,10 @@ export default function App() {
     usePaperTrading(addTrade);
   const lastNotifiedRef = useRef<number | null>(null);
   const isEN = lang === 'EN';
+
+  // R1: single symbol label for 03081
   const symbolLabels: Record<FutuSymbol, string> = {
-    'HK.MHImain': isEN ? '🇭🇰 Mini HSI Fut' : '🇭🇰 小型恆指期貨',
-    'HK.HSImain': isEN ? '📊 HSI Futures' : '📊 恆指期貨',
-    'HK.HHImain': isEN ? '🇨🇳 H-Share Fut' : '🇨🇳 國指期貨',
+    'HK.03081': isEN ? '🥇 Value Gold ETF' : '🥇 價値黃金ETF',
   };
   const symbolLabel = symbolLabels[symbol] ?? symbol;
   const modeColor = mode === 'LIVE' ? '#f0b90b' : mode === 'PAPER' ? '#29b6f6' : '#ab47bc';
@@ -162,22 +160,19 @@ export default function App() {
       new Notification(`KMA ${signal.type} — ${symbolLabel}`, { body: signal.message });
     const tgMsg = [
       `${isLong ? '🟢' : '🔴'} <b>KMA ${signal.type} Entry Signal</b>`,
-      `📊 <b>Contract:</b> ${symbolLabel} 💰 <b>Index:</b> ${signal.price.toFixed(0)} pts`,
-      `🛑 <b>S/L:</b> ${(isLong ? signal.price * (1 - DEFAULT_SL_FRACTION) : signal.price * (1 + DEFAULT_SL_FRACTION)).toFixed(0)} 🎯 <b>T/P:</b> ${(isLong ? signal.price * (1 + DEFAULT_TP_FRACTION) : signal.price * (1 - DEFAULT_TP_FRACTION)).toFixed(0)}`,
-      contractSpec.isFutures
-        ? `💵 <b>HKD/pt:</b> HK$${contractSpec.multiplier} 📋 <b>Est. Margin:</b> HK$${contractSpec.marginEstHKD.toLocaleString()}`
-        : '',
+      `📊 <b>Asset:</b> ${symbolLabel} 💰 <b>Price:</b> HK$${signal.price.toFixed(2)}`,
+      `🛑 <b>S/L:</b> HK$${(isLong ? signal.price * (1 - DEFAULT_SL_FRACTION) : signal.price * (1 + DEFAULT_SL_FRACTION)).toFixed(2)} 🎯 <b>T/P:</b> HK$${(isLong ? signal.price * (1 + DEFAULT_TP_FRACTION) : signal.price * (1 - DEFAULT_TP_FRACTION)).toFixed(2)}`,
       `⏰ ${new Date(signal.time * 1000).toLocaleString('en-HK')}`,
       `<i>⚠️ For reference only</i>`,
     ].filter(Boolean).join('\n');
     sendMessage(tgMsg);
     sendEmail({
-      subject: `${isLong ? '🟢 LONG' : '🔴 SHORT'} Signal — ${symbolLabel} @ ${signal.price.toFixed(0)} pts`,
+      subject: `${isLong ? '🟢 LONG' : '🔴 SHORT'} Signal — ${symbolLabel} @ HK$${signal.price.toFixed(2)}`,
       signal_type: isLong ? '🟢 LONG' : '🔴 SHORT',
       asset: symbolLabel,
-      price: signal.price.toFixed(0),
-      stop_loss: (isLong ? signal.price * (1 - DEFAULT_SL_FRACTION) : signal.price * (1 + DEFAULT_SL_FRACTION)).toFixed(0),
-      take_profit: (isLong ? signal.price * (1 + DEFAULT_TP_FRACTION) : signal.price * (1 - DEFAULT_TP_FRACTION)).toFixed(0),
+      price: signal.price.toFixed(2),
+      stop_loss: (isLong ? signal.price * (1 - DEFAULT_SL_FRACTION) : signal.price * (1 + DEFAULT_SL_FRACTION)).toFixed(2),
+      take_profit: (isLong ? signal.price * (1 + DEFAULT_TP_FRACTION) : signal.price * (1 - DEFAULT_TP_FRACTION)).toFixed(2),
       time: new Date(signal.time * 1000).toLocaleString('en-HK'),
       message: signal.message,
     });
@@ -187,18 +182,14 @@ export default function App() {
     if (Notification.permission === 'default') Notification.requestPermission();
   }, []);
 
-  // ── Data source banner text ────────────────────────────────────────────
+  // ── Data source banner ────────────────────────────────────────────────────────────────
   const dataSourceBanner = isStale
     ? (isEN
-      ? `🔴 STALE DATA — last update ${secsSinceUpdate}s ago. Check connection or restart proxy.`
-      : `🔴 數據已過時 — 最後更新於 ${secsSinceUpdate} 秒前。請檢查網絡或重啟代理。`)
+      ? `🔴 STALE DATA — last update ${secsSinceUpdate}s ago. Check FutuOpenD connection.`
+      : `🔴 數据已過時 — 最後更新於 ${secsSinceUpdate} 秒前。請檢查 FutuOpenD 連接。`)
     : dataSource === 'futu'
-    ? (isEN ? '🟢 Live data: Futu OpenAPI · updates every 10s' : '🟢 即時數據：富途 OpenAPI · 每10秒更新')
-    : dataSource === 'yahoo'
-    ? (isEN
-      ? `📡 Data: Yahoo Finance (fallback) · updates every 60s${secsSinceUpdate ? ` · ${secsSinceUpdate}s ago` : ''} · Start proxy for live data`
-      : `📡 數據：Yahoo Finance（備用）· 每60秒更新${secsSinceUpdate ? `· ${secsSinceUpdate}秒前` : ''} · 啟動代理伺服器可獲即時數據`)
-    : (isEN ? '⏳ Connecting…' : '⏳ 連接中…');
+    ? (isEN ? '🟢 Live data: Futu OpenAPI · updates every 10s · Signal engine active' : '🟢 即時數据：富途 OpenAPI · 每10秒更新 · 訊號引擎運行中')
+    : (isEN ? '⏳ Connecting to FutuOpenD… Chart powered by TradingView.' : '⏳ 連接 FutuOpenD 中… 圖表由 TradingView 提供。');
   const bannerBorderColor = isStale ? '#ff174422' : dataSource === 'futu' ? '#00c85322' : '#f0b90b22';
   const bannerColor = isStale ? '#ff5252' : dataSource === 'futu' ? '#00c85388' : '#f0b90b88';
   const bannerBackground = isStale ? '#2a0000' : dataSource === 'futu' ? '#0d1a0d' : '#1a1500';
@@ -206,6 +197,7 @@ export default function App() {
   return (
     <main style={styles.main}>
       <Toaster position="top-right" />
+
       {/* Data source / stale banner */}
       <div style={{
         ...styles.dataSourceBadge,
@@ -216,24 +208,26 @@ export default function App() {
       }}>
         {dataSourceBanner}
       </div>
+
       {showOnboard && (
         <div style={styles.onboard}>
           <div style={styles.onboardInner}>
             <div style={styles.onboardIcon}>👋</div>
             <div style={{ flex: 1 }}>
               <div style={styles.onboardTitle}>
-                {isEN ? '🇭🇰 Welcome to HK Futures MA Trader!' : '🇭🇰 歡迎使用港股期貨 K均訊號系統！'}
+                {isEN ? '🥇 Welcome to HK Gold ETF Signal Trader!' : '🥇 歡迎使用黃金ETF K均訊號系統！'}
               </div>
               <div style={styles.onboardDesc}>
                 {isEN
-                  ? 'Trading HK futures via Futu Securities. Start with 🇭🇰 Mini HSI (MHI) — lowest margin. Use Paper mode to practice before going live.'
-                  : '透過富途證券交易港股期貨。建議從🇭🇰小型恆指（MHI）開始——保證金最低。先用模擬盤練習，再進行實盤交易。'}
+                  ? 'Analyse Value Gold ETF (03081) via Futu Securities. Chart powered by TradingView. Signal alerts sent to Telegram & Email.'
+                  : '透過富途證券分析價値黃金ETF (03081)。圖表由 TradingView 提供。訊號警報發送至 Telegram 與電郵。'}
               </div>
             </div>
             <button onClick={dismissOnboard} style={styles.onboardClose}>✕</button>
           </div>
         </div>
       )}
+
       {showRoadmap && <BeginnerRoadmap lang={lang} onDismiss={dismissRoadmap} />}
       {!showRoadmap && (
         <button
@@ -243,17 +237,13 @@ export default function App() {
           {isEN ? '🗺️ Show Roadmap' : '🗺️ 顯示路線圖'}
         </button>
       )}
+
       {/* Header */}
       <div style={styles.headerRow}>
         <div>
           <h1 style={{ ...styles.header, color: modeColor }}>{tr('appTitle', lang)}</h1>
           <div style={styles.subHeader}>
             {symbolLabel} · {klineInterval.toUpperCase()} · MA{ma1Period}/MA{ma2Period}
-            {contractSpec.isFutures && (
-              <span style={{ marginLeft: 6, color: '#f0b90b55', fontSize: '0.68rem' }}>
-                HK${contractSpec.multiplier}/pt · margin~HK${(contractSpec.marginEstHKD / 1000).toFixed(0)}k
-              </span>
-            )}
             {signal && (
               <span style={{ marginLeft: 8, color: signal.type === 'LONG' ? '#00c853' : '#ff1744', fontSize: '0.7rem' }}>
                 ● {isEN ? 'Signal Active' : '有訊號'}
@@ -273,9 +263,11 @@ export default function App() {
           )}
         </div>
       </div>
+
       <div id="mode-bar">
         <ModeBar mode={mode} onChange={setMode} lang={lang} onLangChange={setLang} />
       </div>
+
       <ControlBar
         symbol={symbol}
         interval={klineInterval}
@@ -287,23 +279,30 @@ export default function App() {
         onMa1Change={setMa1Period}
         onMa2Change={setMa2Period}
       />
+
+      {/* R3: TradingView chart — always shown, no dependency on FutuOpenD */}
+      <ErrorBoundary fallback={isEN ? 'Chart failed to load' : '圖表載入失敗'}>
+        <TradingViewChart lang={lang} interval={klineInterval} />
+      </ErrorBoundary>
+
+      {/* Status cards — shown below chart so chart always renders first */}
       {loading && (
         <div style={styles.statusCard}>
           <span style={{ fontSize: '1.2rem' }}>⏳</span>
-          <span>{tr('loading', lang)} {symbolLabel} {tr('klineData', lang)}</span>
+          <span>{tr('loading', lang)} {symbolLabel} {tr('klineData', lang)} {isEN ? '(signal engine)' : '(訊號引擎)'}</span>
         </div>
       )}
       {error && !loading && (
-        <div style={{ ...styles.statusCard, borderColor: '#ff1744', color: '#ff5252' }}>
-          <span>❌ {error}</span>
-          <span style={{ fontSize: '0.75rem', color: '#666' }}>{isEN ? 'Check your internet connection.' : '請檢查網絡連接。'}</span>
+        <div style={{ ...styles.statusCard, borderColor: '#f0b90b55', color: '#f0b90b88' }}>
+          <span>⚠️ {isEN ? 'Signal engine offline' : '訊號引擎離線'}</span>
+          <span style={{ fontSize: '0.75rem', color: '#555' }}>
+            {isEN
+              ? 'FutuOpenD not running — start proxy for live signals. Chart above still works.'
+              : 'FutuOpenD 未運行—啟動代理伺服器可獲即時訊號。上方圖表仍正常顯示。'}
+          </span>
         </div>
       )}
-      {!loading && !error && (
-        <ErrorBoundary fallback={isEN ? 'Chart failed to load' : '圖表載入失敗'}>
-          <KlineChart candles={candles} ma20={ma20} ma60={ma60} signal={signal} lang={lang} />
-        </ErrorBoundary>
-      )}
+
       {mode === 'LIVE' && !loading && !error && (
         <>
           <ErrorBoundary fallback="Signal panel failed">
@@ -330,6 +329,8 @@ export default function App() {
           )}
         </>
       )}
+
+      {/* R2: PAPER mode block kept but unreachable — ModeBar no longer shows PAPER button */}
       {mode === 'PAPER' && !loading && !error && (
         <>
           <ErrorBoundary fallback="Paper panel failed">
@@ -347,6 +348,7 @@ export default function App() {
           </ErrorBoundary>
         </>
       )}
+
       {mode === 'BACKTEST' && (
         <ErrorBoundary fallback="Backtest failed">
           <BacktestPanel
@@ -358,6 +360,7 @@ export default function App() {
           />
         </ErrorBoundary>
       )}
+
       <p style={styles.footer}>
         📡 {candles.length} {tr('footerKlines', lang)}
         <span style={{ margin: '0 8px', color: '#1e1e35' }}>·</span>
