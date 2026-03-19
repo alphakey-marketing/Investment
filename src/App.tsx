@@ -11,7 +11,7 @@ import { calculateSMA } from './utils/ma';
 import { detectSignal } from './utils/signal';
 import ModeBar from './components/ModeBar';
 import ControlBar from './components/ControlBar';
-import TradingViewChart from './components/TradingViewChart';
+import KlineChart from './components/KlineChart';
 import SignalPanel from './components/SignalPanel';
 import SignalHistory from './components/SignalHistory';
 import TelegramSettings from './components/TelegramSettings';
@@ -66,16 +66,8 @@ function BeginnerRoadmap({ lang, onDismiss }: { lang: Lang; onDismiss: () => voi
           {steps.map((step, i) => (
             <div
               key={i}
-              style={{
-                ...rmStyles.step,
-                background: done[i] ? '#0d2a0d' : '#12122a',
-                border: `1px solid ${done[i] ? '#00c85355' : '#2a2a3e'}`,
-              }}
-              onClick={() => {
-                markDone(i);
-                const el = document.getElementById(step.id);
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }}
+              style={{ ...rmStyles.step, background: done[i] ? '#0d2a0d' : '#12122a', border: `1px solid ${done[i] ? '#00c85355' : '#2a2a3e'}` }}
+              onClick={() => { markDone(i); const el = document.getElementById(step.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
             >
               <span style={rmStyles.stepNum}>
                 {done[i]
@@ -99,15 +91,36 @@ function BeginnerRoadmap({ lang, onDismiss }: { lang: Lang; onDismiss: () => voi
   );
 }
 const rmStyles: Record<string, React.CSSProperties> = {
-  wrapper: { background: 'linear-gradient(135deg, #0d0d1e, #12122a)', border: '1px solid #29b6f644', borderRadius: 14, maxWidth: 700, width: '100%', boxShadow: '0 4px 24px #29b6f610' },
-  inner: { padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 },
+  wrapper:  { background: 'linear-gradient(135deg, #0d0d1e, #12122a)', border: '1px solid #29b6f644', borderRadius: 14, maxWidth: 700, width: '100%', boxShadow: '0 4px 24px #29b6f610' },
+  inner:    { padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 },
   titleRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  title: { fontSize: '0.85rem', fontWeight: 'bold', color: '#29b6f6', fontFamily: 'monospace' },
-  dismiss: { background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '0.9rem', padding: 4 },
+  title:    { fontSize: '0.85rem', fontWeight: 'bold', color: '#29b6f6', fontFamily: 'monospace' },
+  dismiss:  { background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '0.9rem', padding: 4 },
   stepsRow: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 },
-  step: { borderRadius: 8, padding: '10px 12px', cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'flex-start', transition: 'opacity 0.2s' },
-  stepNum: { flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  step:     { borderRadius: 8, padding: '10px 12px', cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'flex-start', transition: 'opacity 0.2s' },
+  stepNum:  { flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
 };
+
+// ─── Data source badge sub-component ─────────────────────────────────────────────────────────────────────────
+function ChartSourceBadge({ source, lang }: { source: 'futu' | 'yahoo' | null; lang: Lang }) {
+  const isEN = lang === 'EN';
+  if (!source) return null;
+  const isFutu = source === 'futu';
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      fontSize: '0.65rem', fontFamily: 'monospace',
+      color: isFutu ? '#00c853' : '#f0b90b',
+      background: isFutu ? '#00c85310' : '#f0b90b10',
+      border: `1px solid ${isFutu ? '#00c85333' : '#f0b90b33'}`,
+      borderRadius: 5, padding: '2px 8px',
+    }}>
+      {isFutu
+        ? (isEN ? '🟢 Futu OpenD · live 10s' : '🟢 富途即時 · 10秒更新')
+        : (isEN ? '🟡 Yahoo Finance · 60s refresh' : '🟡 Yahoo Finance · 60秒更新')}
+    </div>
+  );
+}
 
 // ─── Main App ─────────────────────────────────────────────────────────────────────────────────────────
 export default function App() {
@@ -115,14 +128,12 @@ export default function App() {
   const { mode, lang, symbol, klineInterval, ma1Period, ma2Period, showOnboard, showRoadmap, now } = state;
   const { setMode, setLang, setSymbol, setKlineInterval, setMa1Period, setMa2Period, dismissOnboard, dismissRoadmap, showRoadmapAgain } = actions;
 
-  // Market data — still drives signal detection, alerts, backtest even with TradingView chart
   const { candles, loading, error, lastPrice, dataSource, lastUpdated } =
     useFutuKlines(klineInterval, 200, symbol);
 
   const isStale = lastUpdated !== null && (now - lastUpdated.getTime()) > STALE_THRESHOLD_MS;
   const secsSinceUpdate = lastUpdated ? Math.round((now - lastUpdated.getTime()) / 1000) : null;
 
-  const contractSpec = CONTRACT_SPECS[symbol];
   const ma20 = calculateSMA(candles, ma1Period);
   const ma60 = calculateSMA(candles, ma2Period);
   const signal = detectSignal(candles, ma1Period, ma2Period);
@@ -135,7 +146,6 @@ export default function App() {
   const lastNotifiedRef = useRef<number | null>(null);
   const isEN = lang === 'EN';
 
-  // R1: single symbol label for 03081
   const symbolLabels: Record<FutuSymbol, string> = {
     'HK.03081': isEN ? '🥇 Value Gold ETF' : '🥇 價値黃金ETF',
   };
@@ -146,6 +156,7 @@ export default function App() {
     setKlineInterval(i.toLowerCase() as any);
   };
 
+  // ── Signal notifications ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (mode !== 'LIVE' || !signal) return;
     if (lastNotifiedRef.current === signal.time) return;
@@ -161,18 +172,18 @@ export default function App() {
     const tgMsg = [
       `${isLong ? '🟢' : '🔴'} <b>KMA ${signal.type} Entry Signal</b>`,
       `📊 <b>Asset:</b> ${symbolLabel} 💰 <b>Price:</b> HK$${signal.price.toFixed(2)}`,
-      `🛑 <b>S/L:</b> HK$${(isLong ? signal.price * (1 - DEFAULT_SL_FRACTION) : signal.price * (1 + DEFAULT_SL_FRACTION)).toFixed(2)} 🎯 <b>T/P:</b> HK$${(isLong ? signal.price * (1 + DEFAULT_TP_FRACTION) : signal.price * (1 - DEFAULT_TP_FRACTION)).toFixed(2)}`,
+      `🛑 <b>S/L:</b> HK$${(isLong ? signal.price*(1-DEFAULT_SL_FRACTION) : signal.price*(1+DEFAULT_SL_FRACTION)).toFixed(2)} 🎯 <b>T/P:</b> HK$${(isLong ? signal.price*(1+DEFAULT_TP_FRACTION) : signal.price*(1-DEFAULT_TP_FRACTION)).toFixed(2)}`,
       `⏰ ${new Date(signal.time * 1000).toLocaleString('en-HK')}`,
       `<i>⚠️ For reference only</i>`,
-    ].filter(Boolean).join('\n');
+    ].join('\n');
     sendMessage(tgMsg);
     sendEmail({
       subject: `${isLong ? '🟢 LONG' : '🔴 SHORT'} Signal — ${symbolLabel} @ HK$${signal.price.toFixed(2)}`,
       signal_type: isLong ? '🟢 LONG' : '🔴 SHORT',
       asset: symbolLabel,
       price: signal.price.toFixed(2),
-      stop_loss: (isLong ? signal.price * (1 - DEFAULT_SL_FRACTION) : signal.price * (1 + DEFAULT_SL_FRACTION)).toFixed(2),
-      take_profit: (isLong ? signal.price * (1 + DEFAULT_TP_FRACTION) : signal.price * (1 - DEFAULT_TP_FRACTION)).toFixed(2),
+      stop_loss: (isLong ? signal.price*(1-DEFAULT_SL_FRACTION) : signal.price*(1+DEFAULT_SL_FRACTION)).toFixed(2),
+      take_profit: (isLong ? signal.price*(1+DEFAULT_TP_FRACTION) : signal.price*(1-DEFAULT_TP_FRACTION)).toFixed(2),
       time: new Date(signal.time * 1000).toLocaleString('en-HK'),
       message: signal.message,
     });
@@ -182,33 +193,34 @@ export default function App() {
     if (Notification.permission === 'default') Notification.requestPermission();
   }, []);
 
-  // ── Data source banner ────────────────────────────────────────────────────────────────
+  // ── Banner text ──────────────────────────────────────────────────────────────────────
   const dataSourceBanner = isStale
     ? (isEN
-      ? `🔴 STALE DATA — last update ${secsSinceUpdate}s ago. Check FutuOpenD connection.`
-      : `🔴 數据已過時 — 最後更新於 ${secsSinceUpdate} 秒前。請檢查 FutuOpenD 連接。`)
+        ? `🔴 STALE — last update ${secsSinceUpdate}s ago. Check server connection.`
+        : `🔴 數据已過時 — 最後更新於 ${secsSinceUpdate} 秒前。請檢查服務器連接。`)
     : dataSource === 'futu'
-    ? (isEN ? '🟢 Live data: Futu OpenAPI · updates every 10s · Signal engine active' : '🟢 即時數据：富途 OpenAPI · 每10秒更新 · 訊號引擎運行中')
-    : (isEN ? '⏳ Connecting to FutuOpenD… Chart powered by TradingView.' : '⏳ 連接 FutuOpenD 中… 圖表由 TradingView 提供。');
-  const bannerBorderColor = isStale ? '#ff174422' : dataSource === 'futu' ? '#00c85322' : '#f0b90b22';
-  const bannerColor = isStale ? '#ff5252' : dataSource === 'futu' ? '#00c85388' : '#f0b90b88';
-  const bannerBackground = isStale ? '#2a0000' : dataSource === 'futu' ? '#0d1a0d' : '#1a1500';
+    ? (isEN ? '🟢 Futu OpenAPI · real-time · updates every 10s' : '🟢 富途 OpenAPI · 即時 · 每10秒更新')
+    : dataSource === 'yahoo'
+    ? (isEN ? '🟡 Yahoo Finance · via server proxy · updates every 60s' : '🟡 Yahoo Finance · 經伺服器代理 · 每60秒更新')
+    : (isEN ? '⏳ Connecting…' : '⏳ 連接中…');
+
+  const bannerColor      = isStale ? '#ff5252' : dataSource === 'futu' ? '#00c85388' : dataSource === 'yahoo' ? '#f0b90b88' : '#55555588';
+  const bannerBackground = isStale ? '#2a0000' : dataSource === 'futu' ? '#0d1a0d'   : dataSource === 'yahoo' ? '#1a1500'   : '#0f0f1a';
+  const bannerBorder     = isStale ? '#ff174422' : dataSource === 'futu' ? '#00c85322' : dataSource === 'yahoo' ? '#f0b90b22' : '#2a2a3e';
+
+  // ── Chart: show KlineChart when we have candles, loading skeleton when not ────────────────
+  const showChart = candles.length > 0;
 
   return (
     <main style={styles.main}>
       <Toaster position="top-right" />
 
-      {/* Data source / stale banner */}
-      <div style={{
-        ...styles.dataSourceBadge,
-        borderColor: bannerBorderColor,
-        color: bannerColor,
-        background: bannerBackground,
-        fontWeight: isStale ? 'bold' : 'normal',
-      }}>
+      {/* Banner */}
+      <div style={{ ...styles.dataSourceBadge, borderColor: bannerBorder, color: bannerColor, background: bannerBackground, fontWeight: isStale ? 'bold' : 'normal' }}>
         {dataSourceBanner}
       </div>
 
+      {/* Onboarding */}
       {showOnboard && (
         <div style={styles.onboard}>
           <div style={styles.onboardInner}>
@@ -219,8 +231,8 @@ export default function App() {
               </div>
               <div style={styles.onboardDesc}>
                 {isEN
-                  ? 'Analyse Value Gold ETF (03081) via Futu Securities. Chart powered by TradingView. Signal alerts sent to Telegram & Email.'
-                  : '透過富途證券分析價値黃金ETF (03081)。圖表由 TradingView 提供。訊號警報發送至 Telegram 與電郵。'}
+                  ? 'Analyse Value Gold ETF (03081) on HKEX via Futu Securities. Falls back to Yahoo Finance when offline. Signal alerts via Telegram & Email.'
+                  : '透過富途證券分析價値黃金ETF (03081)。離線時自動切換至 Yahoo Finance。訊號警報發送至 Telegram 與電郵。'}
               </div>
             </div>
             <button onClick={dismissOnboard} style={styles.onboardClose}>✕</button>
@@ -280,26 +292,54 @@ export default function App() {
         onMa2Change={setMa2Period}
       />
 
-      {/* R3: TradingView chart — always shown, no dependency on FutuOpenD */}
-      <ErrorBoundary fallback={isEN ? 'Chart failed to load' : '圖表載入失敗'}>
-        <TradingViewChart lang={lang} interval={klineInterval} />
-      </ErrorBoundary>
+      {/* ── Chart area ──
+          Primary: KlineChart fed by Yahoo Finance (via server proxy)
+          Fallback: KlineChart fed by Futu OpenD (local only)
+          Both use the same candles[] from useFutuKlines — source is transparent */}
+      <div style={{ maxWidth: 700, width: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingRight: 2 }}>
+          <ChartSourceBadge source={dataSource} lang={lang} />
+        </div>
+        {showChart ? (
+          <ErrorBoundary fallback={isEN ? 'Chart failed to load' : '圖表載入失敗'}>
+            <KlineChart
+              candles={candles}
+              ma20={ma20}
+              ma60={ma60}
+              signal={signal}
+              lang={lang}
+            />
+          </ErrorBoundary>
+        ) : loading ? (
+          <div style={styles.chartSkeleton}>
+            <span style={{ fontSize: '1.4rem' }}>⏳</span>
+            <span style={{ color: '#555', fontFamily: 'monospace', fontSize: '0.82rem' }}>
+              {isEN ? 'Loading chart data…' : '載入圖表數據中…'}
+            </span>
+          </div>
+        ) : error ? (
+          <div style={{ ...styles.chartSkeleton, borderColor: '#f0b90b33' }}>
+            <span style={{ fontSize: '1.2rem' }}>⚠️</span>
+            <span style={{ color: '#f0b90b88', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+              {isEN
+                ? 'Could not load chart — check server is running on Replit'
+                : '圖表載入失敗 — 請檢查 Replit 伺服器是否運行中'}
+            </span>
+          </div>
+        ) : null}
+      </div>
 
-      {/* Status cards — shown below chart so chart always renders first */}
-      {loading && (
+      {/* Status / loading cards for signal engine */}
+      {loading && candles.length === 0 && (
         <div style={styles.statusCard}>
           <span style={{ fontSize: '1.2rem' }}>⏳</span>
-          <span>{tr('loading', lang)} {symbolLabel} {tr('klineData', lang)} {isEN ? '(signal engine)' : '(訊號引擎)'}</span>
+          <span>{tr('loading', lang)} {symbolLabel} {tr('klineData', lang)}</span>
         </div>
       )}
       {error && !loading && (
         <div style={{ ...styles.statusCard, borderColor: '#f0b90b55', color: '#f0b90b88' }}>
-          <span>⚠️ {isEN ? 'Signal engine offline' : '訊號引擎離線'}</span>
-          <span style={{ fontSize: '0.75rem', color: '#555' }}>
-            {isEN
-              ? 'FutuOpenD not running — start proxy for live signals. Chart above still works.'
-              : 'FutuOpenD 未運行—啟動代理伺服器可獲即時訊號。上方圖表仍正常顯示。'}
-          </span>
+          <span>⚠️ {isEN ? 'Data error' : '數据錯誤'}</span>
+          <span style={{ fontSize: '0.75rem', color: '#555' }}>{error}</span>
         </div>
       )}
 
@@ -330,7 +370,7 @@ export default function App() {
         </>
       )}
 
-      {/* R2: PAPER mode block kept but unreachable — ModeBar no longer shows PAPER button */}
+      {/* R2: PAPER block kept but unreachable — ModeBar no longer shows PAPER button */}
       {mode === 'PAPER' && !loading && !error && (
         <>
           <ErrorBoundary fallback="Paper panel failed">
@@ -351,13 +391,7 @@ export default function App() {
 
       {mode === 'BACKTEST' && (
         <ErrorBoundary fallback="Backtest failed">
-          <BacktestPanel
-            candles={candles}
-            ma1Period={ma1Period}
-            ma2Period={ma2Period}
-            symbol={symbol}
-            lang={lang}
-          />
+          <BacktestPanel candles={candles} ma1Period={ma1Period} ma2Period={ma2Period} symbol={symbol} lang={lang} />
         </ErrorBoundary>
       )}
 
@@ -371,21 +405,22 @@ export default function App() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  main: { minHeight: '100vh', background: '#0a0a1a', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 12px', gap: 14, fontFamily: 'monospace' },
+  main:            { minHeight: '100vh', background: '#0a0a1a', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 12px', gap: 14, fontFamily: 'monospace' },
   dataSourceBadge: { borderRadius: 8, padding: '4px 12px', fontSize: '0.68rem', fontFamily: 'monospace', maxWidth: 700, width: '100%', textAlign: 'center', border: '1px solid', transition: 'all 0.5s' },
-  onboard: { background: 'linear-gradient(135deg, #1a1a35, #12122a)', border: '1px solid #f0b90b55', borderRadius: 14, padding: '18px 20px', maxWidth: 700, width: '100%', boxShadow: '0 4px 24px #f0b90b18' },
-  onboardInner: { display: 'flex', gap: 14, alignItems: 'flex-start' },
-  onboardIcon: { fontSize: '2rem', flexShrink: 0 },
-  onboardTitle: { fontSize: '0.95rem', fontWeight: 'bold', color: '#f0b90b', marginBottom: 6 },
-  onboardDesc: { fontSize: '0.8rem', color: '#aaa', lineHeight: 1.6, marginBottom: 10 },
-  onboardClose: { background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '1rem', flexShrink: 0, padding: 4 },
-  headerRow: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%', maxWidth: 700 },
-  header: { fontFamily: 'monospace', fontSize: '1.15rem', margin: 0 },
-  subHeader: { color: '#555', fontFamily: 'monospace', fontSize: '0.75rem', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
-  badge: { border: '1px solid', padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontFamily: 'monospace' },
-  tgBadge: { background: '#0d2a3e', color: '#29b6f6', border: '1px solid #29b6f6', padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontFamily: 'monospace' },
-  emailBadge: { background: '#1a0d2e', color: '#ce93d8', border: '1px solid #ce93d8', padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontFamily: 'monospace' },
-  statusCard: { background: '#1a1a2e', border: '1px solid #2a2a3e', borderRadius: 10, padding: '14px 18px', maxWidth: 700, width: '100%', color: '#888', fontFamily: 'monospace', fontSize: '0.85rem', display: 'flex', gap: 10, alignItems: 'center' },
-  clearBtn: { background: 'none', border: 'none', color: '#333', fontFamily: 'monospace', fontSize: '0.72rem', cursor: 'pointer', marginTop: 6, padding: '2px 6px' },
-  footer: { color: '#2a2a3e', fontSize: '0.72rem', fontFamily: 'monospace', textAlign: 'center', margin: 0, marginTop: 8 },
+  onboard:         { background: 'linear-gradient(135deg, #1a1a35, #12122a)', border: '1px solid #f0b90b55', borderRadius: 14, padding: '18px 20px', maxWidth: 700, width: '100%', boxShadow: '0 4px 24px #f0b90b18' },
+  onboardInner:    { display: 'flex', gap: 14, alignItems: 'flex-start' },
+  onboardIcon:     { fontSize: '2rem', flexShrink: 0 },
+  onboardTitle:    { fontSize: '0.95rem', fontWeight: 'bold', color: '#f0b90b', marginBottom: 6 },
+  onboardDesc:     { fontSize: '0.8rem', color: '#aaa', lineHeight: 1.6, marginBottom: 10 },
+  onboardClose:    { background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '1rem', flexShrink: 0, padding: 4 },
+  headerRow:       { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%', maxWidth: 700 },
+  header:          { fontFamily: 'monospace', fontSize: '1.15rem', margin: 0 },
+  subHeader:       { color: '#555', fontFamily: 'monospace', fontSize: '0.75rem', marginTop: 3, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
+  badge:           { border: '1px solid', padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontFamily: 'monospace' },
+  tgBadge:         { background: '#0d2a3e', color: '#29b6f6', border: '1px solid #29b6f6', padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontFamily: 'monospace' },
+  emailBadge:      { background: '#1a0d2e', color: '#ce93d8', border: '1px solid #ce93d8', padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontFamily: 'monospace' },
+  chartSkeleton:   { background: '#0f0f1a', border: '1px solid #1a1a2e', borderRadius: 12, height: 200, maxWidth: 700, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  statusCard:      { background: '#1a1a2e', border: '1px solid #2a2a3e', borderRadius: 10, padding: '14px 18px', maxWidth: 700, width: '100%', color: '#888', fontFamily: 'monospace', fontSize: '0.85rem', display: 'flex', gap: 10, alignItems: 'center' },
+  clearBtn:        { background: 'none', border: 'none', color: '#333', fontFamily: 'monospace', fontSize: '0.72rem', cursor: 'pointer', marginTop: 6, padding: '2px 6px' },
+  footer:          { color: '#2a2a3e', fontSize: '0.72rem', fontFamily: 'monospace', textAlign: 'center', margin: 0, marginTop: 8 },
 };
