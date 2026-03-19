@@ -3,7 +3,7 @@ import { Interval } from '../types/binance';
 import { FutuSymbol } from '../types/futu';
 import { Lang } from '../i18n';
 
-// ─── Symbol definitions ────────────────────────────────────────────────────────
+// ─── Symbol definitions ────────────────────────────────────────────────────
 const HK_SYMBOLS: {
   value: FutuSymbol;
   icon: string;
@@ -14,31 +14,13 @@ const HK_SYMBOLS: {
   tag?: string;
 }[] = [
   {
-    value: 'HK.MHImain',
-    icon: '🇭🇰',
-    labelEN: 'Mini HSI',
-    labelZH: '恒指期貨(小)',
-    descEN: 'Mini Hang Seng Index Futures — HK$10 per point. Lower margin (~HK$22k). Best for retail futures traders.',
-    descZH: '小型恒生指數期貨 — 每點HK$10，所需保證金較低（約HK$22,000），最適合散戶入門期貨交易。',
-    tag: 'FUTURES',
-  },
-  {
-    value: 'HK.HSImain',
-    icon: '📊',
-    labelEN: 'Full HSI',
-    labelZH: '恒指期貨(大)',
-    descEN: 'Full Hang Seng Index Futures — HK$50 per point. Higher margin (~HK$110k). For experienced traders.',
-    descZH: '大型恒生指數期貨 — 每點HK$50，保證金較高（約HK$110,000），適合有經驗交易者。',
-    tag: 'FUTURES',
-  },
-  {
-    value: 'HK.HHImain',
-    icon: '🇨🇳',
-    labelEN: 'Mini H-Share',
-    labelZH: '國指期貨',
-    descEN: 'Mini H-Shares Index Futures (HSCEI) — tracks mainland China stocks listed in HK.',
-    descZH: '小型國企指數期貨 — 追蹤在港上市的中國內地企業股票走勢。',
-    tag: 'FUTURES',
+    value: 'HK.03081',
+    icon: '🥇',
+    labelEN: 'Value Gold ETF',
+    labelZH: '黃金ETF (03081)',
+    descEN: 'Value Gold ETF — HKEX-listed physical gold ETF priced in HKD. 1 board lot = 100 units. No margin required.',
+    descZH: '價値黃金ETF — 在港交所上市的实黃金ETF，以港元計價。每手100個单位，无須保證金。',
+    tag: 'ETF',
   },
 ];
 
@@ -50,11 +32,11 @@ const INTERVALS: {
   tipEN: string;
   rec?: boolean;
 }[] = [
-  { label: '5分鐘',  labelEN: '5 min',   value: '5m',  tip: '每格5分鐘，適合短線日內交易，訊號多但雜訊也多', tipEN: 'Each bar = 5 min. Short-term scalping. High noise — not recommended for beginners.' },
-  { label: '15分鐘', labelEN: '15 min',  value: '15m', tip: '每格15分鐘，適合HSI期貨日內交易，為港股期貨推薦時間框', tipEN: 'Each bar = 15 min. Recommended for intraday HSI futures — good signal/noise balance.', rec: true },
-  { label: '1小時',  labelEN: '1 Hour',  value: '1h',  tip: '每格1小時，適合波段操作，每個訊號持倉數小時至一日', tipEN: 'Each bar = 1 hour. Swing trading. Signals last hours to a day.' },
-  { label: '4小時',  labelEN: '4 Hours', value: '4h',  tip: '每格4小時，適合短線波段，需較多耐心等待',            tipEN: 'Each bar = 4 hours. Fewer but higher-quality signals. Needs patience.' },
-  { label: '1日',    labelEN: '1 Day',   value: '1d',  tip: '每格1天，適合長線持有，每個訊號可能持倉數天',         tipEN: 'Each bar = 1 day. Long-term trend following. Each signal may mean holding for days.' },
+  { label: '5分鐘',  labelEN: '5 min',   value: '5m',  tip: '每格5分鐘，適合短線日內交易，訊號多但雜訊也多',         tipEN: 'Each bar = 5 min. Short-term scalping. High noise.' },
+  { label: '15分鐘', labelEN: '15 min',  value: '15m', tip: '每格15分鐘，適合日內波段交易',                                 tipEN: 'Each bar = 15 min. Good for intraday swing.' },
+  { label: '1小時',  labelEN: '1 Hour',  value: '1h',  tip: '每格1小時，適合ETF波段操作，推薦使用',                         tipEN: 'Each bar = 1 hour. Best for ETF swing trading — recommended.', rec: true },
+  { label: '4小時',  labelEN: '4 Hours', value: '4h',  tip: '每格4小時，適合短線波段，訊號較少但質量較高',                   tipEN: 'Each bar = 4 hours. Fewer but higher-quality signals.' },
+  { label: '1日',    labelEN: '1 Day',   value: '1d',  tip: '每格1天，適合長線持有，每個訊號可能持倉數天',                     tipEN: 'Each bar = 1 day. Long-term trend following.' },
 ];
 
 interface Props {
@@ -85,8 +67,8 @@ export default function ControlBar({
 
       {/* ── Asset ── */}
       <Group
-        label={isEN ? 'HK Index Futures' : 'HK 指數期貨'}
-        tip={isEN ? 'Choose a HK index futures contract to analyse' : '選擇港股指數期貨合約進行分析'}
+        label={isEN ? 'HK ETF' : '港股ETF'}
+        tip={isEN ? 'Select an ETF to analyse' : '選擇要分析的ETF'}
         onHelp={() => setShowSymbolGuide(!showSymbolGuide)}
         helpOpen={showSymbolGuide}
       >
@@ -94,32 +76,30 @@ export default function ControlBar({
           <BarBtn
             key={s.value}
             active={symbol === s.value}
-            color={s.tag === 'FUTURES' ? '#f0b90b' : '#29b6f6'}
+            color="#f0b90b"
             onClick={() => onSymbolChange(s.value)}
             tip={isEN ? s.descEN : s.descZH}
           >
             {s.icon} {isEN ? s.labelEN : s.labelZH}
-            {s.tag === 'FUTURES' && (
-              <span style={{ marginLeft: 5, fontSize: '0.55rem', background: '#f0b90b33', color: '#f0b90b', borderRadius: 3, padding: '1px 4px' }}>
-                FUT
-              </span>
-            )}
+            <span style={{ marginLeft: 5, fontSize: '0.55rem', background: '#f0b90b33', color: '#f0b90b', borderRadius: 3, padding: '1px 4px' }}>
+              ETF
+            </span>
           </BarBtn>
         ))}
       </Group>
 
       {/* ── Symbol context guide ── */}
       {showSymbolGuide && currentSymbol && (
-        <ContextGuide color={currentSymbol.tag === 'FUTURES' ? '#f0b90b' : '#29b6f6'}>
-          <strong style={{ color: currentSymbol.tag === 'FUTURES' ? '#f0b90b' : '#29b6f6' }}>
+        <ContextGuide color="#f0b90b">
+          <strong style={{ color: '#f0b90b' }}>
             {currentSymbol.icon} {isEN ? currentSymbol.labelEN : currentSymbol.labelZH}
           </strong>{' — '}
           {isEN ? currentSymbol.descEN : currentSymbol.descZH}
           <br />
           <span style={{ color: '#444', fontSize: '0.72rem' }}>
             {isEN
-              ? '💡 Start with Mini HSI (MHI) — lowest margin requirement for futures. Use 15m timeframe for intraday signals.'
-              : '💡 建議從小型恒指（MHI）開始——期貨中保證金要求最低。日內交易建議使用15分鐘時間框。'}
+              ? '💡 Value Gold ETF (03081) tracks physical gold prices in HKD. Suitable for swing trading with 1h or 4h timeframes.'
+              : '💡 價値黃金ETF (03081) 追蹤實物黃金價格，以港元計價。適合以1小時扨1日線進行波段交易。'}
           </span>
         </ContextGuide>
       )}
@@ -127,7 +107,7 @@ export default function ControlBar({
       {/* ── Timeframe ── */}
       <Group
         label={isEN ? 'Timeframe' : '時間框'}
-        tip={isEN ? 'Each candle represents this period. 15m recommended for HSI futures intraday.' : '每根K線代表的時間段。HSI期貨日內交易建議15分鐘。'}
+        tip={isEN ? 'Each candle represents this period. 1h recommended for ETF swing trading.' : '每根K線代表的時間段。ETF波段交易建譆1小時。'}
         onHelp={() => setShowTFGuide(!showTFGuide)}
         helpOpen={showTFGuide}
       >
@@ -153,8 +133,8 @@ export default function ControlBar({
           <br />
           <span style={{ color: '#444', fontSize: '0.72rem' }}>
             {isEN
-              ? '💡 For HSI futures: 15m gives best entry timing. Use 1h to confirm trend direction before trading.'
-              : '💡 恒指期貨：15分鐘最佳入場時機。交易前先用1小時確認趨勢方向。'}
+              ? '💡 For Gold ETF: 1h gives the best signal/noise balance. Use 1d to confirm the overall trend before entering.'
+              : '💡 黃金ETF：1小時訊護1雜訊比例最佳。入場前先看1日線確認主要趨勢。'}
           </span>
         </ContextGuide>
       )}
@@ -163,15 +143,15 @@ export default function ControlBar({
       <Group
         label={isEN ? 'MA Periods' : 'MA 期數'}
         tip={isEN
-          ? 'MA1 (short) & MA2 (long). For HSI futures on 15m, try MA10/MA20.'
-          : 'MA1（短線）與 MA2（長線）。HSI期貨15分鐘建議試用MA10/MA20。'}
+          ? 'MA1 (short) & MA2 (long). For Gold ETF on 1h, try MA20/MA60.'
+          : 'MA1（短線）與 MA2（長線）。黃金ETF 1小時建譆試用 MA20/MA60。'}
       >
         <div style={styles.maRow}>
           <MaInput
             label={isEN ? 'Short (MA1)' : '短線 MA1'}
             value={ma1Period}
             color="#29b6f6"
-            tip={isEN ? `Averages last ${ma1Period} candles — short-term trend` : `計算最近 ${ma1Period} 根K線均值，短期趨勢`}
+            tip={isEN ? `Averages last ${ma1Period} candles — short-term trend` : `計算最近 ${ma1Period} 根K線均値，短期趨勢`}
             onChange={(v) => onMa1Change(v)}
           />
           <span style={{ color: '#333', fontSize: '1rem', paddingTop: 14 }}>/</span>
@@ -179,19 +159,19 @@ export default function ControlBar({
             label={isEN ? 'Long (MA2)' : '長線 MA2'}
             value={ma2Period}
             color="#ab47bc"
-            tip={isEN ? `Averages last ${ma2Period} candles — long-term trend` : `計算最近 ${ma2Period} 根K線均值，長期趨勢`}
+            tip={isEN ? `Averages last ${ma2Period} candles — long-term trend` : `計算最近 ${ma2Period} 根K線均値，長期趨勢`}
             onChange={(v) => onMa2Change(v)}
           />
         </div>
         <span style={{ fontSize: '0.65rem', color: '#2a2a3e', fontFamily: 'monospace' }}>
-          {isEN ? '💡 For HSI futures try MA10/MA20 on 15m charts' : '💡 HSI期貨建議在15分鐘圖試用MA10/MA20'}
+          {isEN ? '💡 For Gold ETF try MA20/MA60 on 1h charts' : '💡 黃金ETF建譆1小時圖試用MA20/MA60'}
         </span>
       </Group>
     </div>
   );
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
+// ─── Sub-components ──────────────────────────────────────────────────────
 function Group({
   label, tip, onHelp, helpOpen, children,
 }: {
@@ -211,7 +191,7 @@ function Group({
             onClick={onHelp}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: helpOpen ? '#f0b90b' : '#333', fontSize: '0.68rem', padding: '0 4px', fontFamily: 'monospace' }}
           >
-            {helpOpen ? '▲ hide' : '▼ what\'s this?'}
+            {helpOpen ? '▲ hide' : "\u25bc what's this?"}
           </button>
         )}
       </div>

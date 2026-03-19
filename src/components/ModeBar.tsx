@@ -10,10 +10,12 @@ interface Props {
 }
 
 export default function ModeBar({ mode, onChange, lang, onLangChange }: Props) {
+  // R2: PAPER mode hidden from UI — component and hook kept for future re-enable
   const modes: { value: AppMode; labelKey: 'modeLive'|'modePaper'|'modeBacktest'; descKey: 'modeDescLive'|'modeDescPaper'|'modeDescBack'; color: string }[] = [
     { value: 'LIVE',     labelKey: 'modeLive',     descKey: 'modeDescLive',  color: '#f0b90b' },
-    { value: 'PAPER',    labelKey: 'modePaper',    descKey: 'modeDescPaper', color: '#29b6f6' },
     { value: 'BACKTEST', labelKey: 'modeBacktest', descKey: 'modeDescBack',  color: '#ab47bc' },
+    // { value: 'PAPER', labelKey: 'modePaper', descKey: 'modeDescPaper', color: '#29b6f6' },
+    // ↑ Re-add above line to restore Paper Trading button
   ];
 
   return (
