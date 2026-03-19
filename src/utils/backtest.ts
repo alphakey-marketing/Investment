@@ -9,11 +9,23 @@
  *   out at any hour once open.
  *
  * Fix 5 — Commission deduction:
- *   Each round-trip deducts commissionPerRound (default HK$80) from net PnL.
+ *   Each round-trip deducts commissionPerRound (default HK$60) from net PnL.
  *   END trades (position still open at last candle) deduct half (entry-side only).
  *   All stats — winRate, profitFactor, maxDrawdown — are calculated on NET PnL.
  *
- * SMA stays as-is (strategy is SMA + price level).
+ * Fix 6 — ETF formula:
+ *   Replaced futures multiplier×contracts with shares (default 100).
+ *   grossPnl = ptDiff × shares  (no leverage multiplier for ETF).
+ *   commissionPerRound reduced to 60 HKD (realistic Futu ETF round-trip).
+ *   includeFuturesEvening defaults to false (ETF has no evening session).
+ *
+ * Fix 7 — Cooldown period:
+ *   After any exit (TP, SL, or END), a 3-candle cooldown prevents
+ *   immediate re-entry and reduces fee-stacking in choppy markets.
+ *
+ * Fix 8 — Symmetric MA:
+ *   Both LONG and SHORT now anchor to ma1 (MA20) for symmetric logic.
+ *   Previously SHORT used ma2 (MA60), causing asymmetric signal frequency.
  */
 import { Candle } from '../types/binance';
 import { BacktestResult, BacktestTrade } from '../types/mode';
@@ -24,13 +36,12 @@ export function runBacktest(
   candles:                Candle[],
   ma1Period               = 20,
   ma2Period               = 60,
-  contracts               = 1,
-  multiplier              = 10,    // HKD per pt per contract — 10=MHI, 50=HSI/HHI
-  slPct                   = 0.005,
-  tpPct                   = 0.015,
+  shares                  = 100,   // number of ETF shares per trade (e.g. 100 shares × ~23 HKD = ~2300 HKD)
+  slPct                   = 0.01,  // widened from 0.5% to 1% — less prone to noise stop-outs
+  tpPct                   = 0.025, // 2.5% target ≈ 2.5× risk (good RR for ETF swing)
   proximityPct            = 0.005,
-  commissionPerRound      = 80,    // HKD per round-trip (entry + exit)
-  includeFuturesEvening   = true   // mirror live signal setting
+  commissionPerRound      = 60,    // HKD per round-trip — realistic for Futu HK ETF
+  includeFuturesEvening   = false  // ETF (03081) has no evening session
 ): BacktestResult {
   const trades: BacktestTrade[] = [];
   let inTrade      = false;
@@ -43,6 +54,10 @@ export function runBacktest(
   let runningPnl   = 0;
   let firstEntryPrice = 0;
   let totalCommission = 0;
+
+  // Fix 7: cooldown counter — skip re-entry for N candles after any exit
+  let cooldownCandles = 0;
+  const COOLDOWN = 3;
 
   for (let i = Math.max(ma1Period, ma2Period) + 1; i < candles.length; i++) {
     const slice = candles.slice(0, i + 1);
@@ -69,12 +84,12 @@ export function runBacktest(
         const ptDiff  = currentTrade.type === 'LONG'
           ? exitPrice - currentTrade.entryPrice!
           : currentTrade.entryPrice! - exitPrice;
-        const grossPnl  = ptDiff * multiplier * contracts;
-        // Fix 5: deduct full round-trip commission
+        // Fix 6: ETF formula — grossPnl = price diff × shares (no futures multiplier)
+        const grossPnl  = ptDiff * shares;
         const netPnl    = grossPnl - commissionPerRound;
         totalCommission += commissionPerRound;
 
-        const notional = currentTrade.entryPrice! * multiplier * contracts;
+        const notional = currentTrade.entryPrice! * shares;
         const pnlPct   = notional > 0
           ? parseFloat(((netPnl / notional) * 100).toFixed(2))
           : 0;
@@ -92,20 +107,24 @@ export function runBacktest(
         if (runningPnl > peak) peak = runningPnl;
         const dd = peak - runningPnl;
         if (dd > maxDrawdown) maxDrawdown = dd;
-        inTrade      = false;
-        currentTrade = null;
+        inTrade         = false;
+        currentTrade    = null;
+        cooldownCandles = COOLDOWN; // Fix 7: start cooldown after exit
       }
     }
 
     // ── Entry signal (Fix 4: session + weekend filter) ──────────────────
     if (!inTrade) {
+      // Fix 7: honour cooldown — decrement and skip entry this candle
+      if (cooldownCandles > 0) { cooldownCandles--; continue; }
+
       // Skip entries outside HKEX trading hours or on weekends
       if (!isHKTradingHours(c.time, includeFuturesEvening)) continue;
-      if (isHKWeekend(c.time)) continue; // belt-and-suspenders (isHKTradingHours covers this too)
+      if (isHKWeekend(c.time)) continue;
 
       const price   = c.close;
+      // Fix 8: both LONG and SHORT anchor to ma1 (MA20) for symmetric logic
       const nearMA1 = Math.abs(price - ma1) / ma1 < proximityPct;
-      const nearMA2 = Math.abs(price - ma2) / ma2 < proximityPct;
 
       if (price > ma1 && c.high > prev.high && nearMA1) {
         inTrade  = true;
@@ -116,7 +135,8 @@ export function runBacktest(
           type: 'LONG', entryTime: c.time, entryPrice: price,
           exitTime: 0, exitPrice: 0, pnl: 0, pnlPct: 0, exitReason: 'END',
         };
-      } else if (price < ma2 && c.low < prev.low && nearMA2) {
+      } else if (price < ma1 && c.low < prev.low && nearMA1) {
+        // Fix 8: SHORT now uses ma1 (MA20) — symmetric with LONG
         inTrade  = true;
         slPrice  = price * (1 + slPct);
         tpPrice  = price * (1 - tpPct);
@@ -135,12 +155,13 @@ export function runBacktest(
     const ptDiff  = currentTrade.type === 'LONG'
       ? last.close - currentTrade.entryPrice!
       : currentTrade.entryPrice! - last.close;
-    const grossPnl  = ptDiff * multiplier * contracts;
-    // Fix 5: END trades pay half commission (entry-side only, exit not yet taken)
+    // Fix 6: ETF formula
+    const grossPnl  = ptDiff * shares;
     const halfComm  = commissionPerRound / 2;
     const netPnl    = grossPnl - halfComm;
     totalCommission += halfComm;
-    const notional  = currentTrade.entryPrice! * multiplier * contracts;
+    // Fix 6: notional uses shares
+    const notional  = currentTrade.entryPrice! * shares;
     const pnlPct    = notional > 0 ? parseFloat(((netPnl / notional) * 100).toFixed(2)) : 0;
     trades.push({
       ...currentTrade as BacktestTrade,
@@ -158,7 +179,8 @@ export function runBacktest(
   const totalWin  = wins.reduce((s, t) => s + t.pnl, 0);
   const totalLoss = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
 
-  const refNotional = firstEntryPrice > 0 ? firstEntryPrice * multiplier * contracts : 1;
+  // Fix 6: refNotional uses shares
+  const refNotional = firstEntryPrice > 0 ? firstEntryPrice * shares : 1;
   const totalPnlPct = parseFloat(((totalPnl / refNotional) * 100).toFixed(1));
 
   return {
@@ -171,7 +193,6 @@ export function runBacktest(
     maxDrawdown:     parseFloat(maxDrawdown.toFixed(2)),
     profitFactor:    totalLoss > 0 ? parseFloat((totalWin / totalLoss).toFixed(2)) : totalWin > 0 ? 99 : 0,
     trades,
-    // Fix 5: expose commission total so BacktestPanel can display it
     totalCommission: parseFloat(totalCommission.toFixed(2)),
   };
 }

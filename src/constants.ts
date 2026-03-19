@@ -34,5 +34,5 @@ export const LS_TRADE_JOURNAL      = 'kma_trade_journal';
 export const SIGNAL_TOAST_DURATION_MS = 12_000;
 
 // ── Stop-loss / take-profit defaults ──────────────────────────────
-export const DEFAULT_SL_FRACTION = 0.01;  // 1%
-export const DEFAULT_TP_FRACTION = 0.03;  // 3%
+export const DEFAULT_SL_FRACTION = 0.01;   // 1% — widened for ETF noise tolerance
+export const DEFAULT_TP_FRACTION = 0.025;  // 2.5% — aligns with backtest tpPct (was 0.03)
