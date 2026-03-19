@@ -8,7 +8,8 @@
  *          → Express server → Yahoo Finance API (server-to-server)
  *          → Candle[] back to browser
  *
- * Polls every 60s (Yahoo rate-limit friendly).
+ * Polls every 300s (5 min) — Yahoo rate-limit friendly.
+ * STALE_THRESHOLD_MS in constants.ts is set to 6 min to match.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Candle } from '../types/binance';
@@ -16,7 +17,7 @@ import { HKTicker } from '../types/hkmarket';
 
 export type HKInterval = '5m' | '15m' | '1h' | '4h' | '1d';
 
-const YAHOO_POLL_MS = 60_000; // 60s — Yahoo rate-limit friendly
+const YAHOO_POLL_MS = 300_000; // 5 min — reduced from 60s to be Yahoo rate-limit friendly
 
 // ── Fetch candles from server-side Yahoo proxy ───────────────────────────────────────
 async function fetchFromYahooProxy(

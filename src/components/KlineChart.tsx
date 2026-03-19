@@ -6,28 +6,29 @@ import { Lang } from '../i18n';
 type ChartType = 'candle' | 'line';
 
 interface Props {
-  candles: Candle[];
-  ma20: MAPoint[];
-  ma60: MAPoint[];
-  signal: SignalEvent | null;
-  lang?: Lang;
+  candles:    Candle[];
+  ma20:       MAPoint[];
+  ma60:       MAPoint[];
+  signal:     SignalEvent | null;
+  lang?:      Lang;
+  ma1Period?: number;  // for dynamic series title e.g. "MA20"
+  ma2Period?: number;  // for dynamic series title e.g. "MA60"
 }
 
-export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH' }: Props) {
+export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH', ma1Period = 20, ma2Period = 60 }: Props) {
   const containerRef    = useRef<HTMLDivElement>(null);
   const chartRef        = useRef<any>(null);
-  const mainSeriesRef   = useRef<any>(null);   // candle OR line — swapped on toggle
+  const mainSeriesRef   = useRef<any>(null);
   const ma20SeriesRef   = useRef<any>(null);
   const ma60SeriesRef   = useRef<any>(null);
   const [chartType, setChartType] = useState<ChartType>('candle');
   const [showGuide, setShowGuide] = useState(false);
   const isEN = lang === 'EN';
 
-  // ── Build / rebuild chart whenever chartType changes ────────────────────
+  // ── Build / rebuild chart whenever chartType or MA periods change ─────────
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Destroy previous chart instance fully before rebuilding
     if (chartRef.current) {
       chartRef.current.remove();
       chartRef.current     = null;
@@ -56,7 +57,6 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH' }:
       height: 360,
     });
 
-    // Main series — candle or line
     const mainSeries = chartType === 'candle'
       ? chart.addCandlestickSeries({
           upColor:        '#00c853',
@@ -75,12 +75,15 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH' }:
           crosshairMarkerRadius:  5,
         });
 
+    // Dynamic series titles using actual MA periods passed from App
     const ma20Series = chart.addLineSeries({
-      color: '#2196f3', lineWidth: 2, title: 'MA短',
+      color: '#2196f3', lineWidth: 2,
+      title: `MA${ma1Period}`,
       priceLineVisible: false, lastValueVisible: true,
     });
     const ma60Series = chart.addLineSeries({
-      color: '#ff9800', lineWidth: 2, title: 'MA長',
+      color: '#ff9800', lineWidth: 2,
+      title: `MA${ma2Period}`,
       priceLineVisible: false, lastValueVisible: true,
     });
 
@@ -103,7 +106,7 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH' }:
       ma20SeriesRef.current  = null;
       ma60SeriesRef.current  = null;
     };
-  }, [chartType]);   // rebuild when type toggles
+  }, [chartType, ma1Period, ma2Period]); // rebuild when type or MA periods change
 
   // ── Feed candle data ──────────────────────────────────────────────────
   useEffect(() => {
@@ -114,7 +117,6 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH' }:
           candles.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }))
         );
       } else {
-        // Line chart uses close price
         mainSeriesRef.current.setData(
           candles.map((c) => ({ time: c.time, value: c.close }))
         );
@@ -161,20 +163,9 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH' }:
         </span>
 
         <div style={styles.controls}>
-          {/* Chart type toggle */}
           <div style={styles.toggleGroup}>
-            <ToggleBtn
-              active={chartType === 'candle'}
-              onClick={() => setChartType('candle')}
-              label={isEN ? '📊 Candle' : '📊 K線'}
-              color="#f0b90b"
-            />
-            <ToggleBtn
-              active={chartType === 'line'}
-              onClick={() => setChartType('line')}
-              label={isEN ? '📈 Line' : '📈 線圖'}
-              color="#f0b90b"
-            />
+            <ToggleBtn active={chartType === 'candle'} onClick={() => setChartType('candle')} label={isEN ? '📊 Candle' : '📊 K線'} color="#f0b90b" />
+            <ToggleBtn active={chartType === 'line'}   onClick={() => setChartType('line')}   label={isEN ? '📈 Line'   : '📈 線圖'} color="#f0b90b" />
           </div>
 
           <div style={styles.legend}>
@@ -187,8 +178,9 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH' }:
             {chartType === 'line' && (
               <LegendDot color="#f0b90b" label={isEN ? '— Price' : '— 價格'} line />
             )}
-            <LegendDot color="#2196f3" label={isEN ? '— MA短' : '— MA短線'} line />
-            <LegendDot color="#ff9800" label={isEN ? '— MA長' : '— MA長線'} line />
+            {/* Dynamic MA labels using actual periods */}
+            <LegendDot color="#2196f3" label={`— MA${ma1Period}`} line />
+            <LegendDot color="#ff9800" label={`— MA${ma2Period}`} line />
             {signal && (
               <span style={{ fontSize: '0.72rem', color: signal.type === 'LONG' ? '#00c853' : '#ff1744', fontFamily: 'monospace' }}>
                 {signal.type === 'LONG' ? '▲ BUY' : '▼ SELL'}
@@ -196,10 +188,7 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH' }:
             )}
           </div>
 
-          <button
-            onClick={() => setShowGuide(!showGuide)}
-            style={styles.guideBtn}
-          >
+          <button onClick={() => setShowGuide(!showGuide)} style={styles.guideBtn}>
             {showGuide ? (isEN ? 'Hide ▲' : '收起 ▲') : (isEN ? 'How to read ▼' : '如何閱讀 ▼')}
           </button>
         </div>
@@ -210,32 +199,18 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH' }:
         <div style={styles.guideBox}>
           <div style={styles.guideTitle}>{isEN ? '📚 How to read this chart' : '📚 如何閱讀圖表'}</div>
           <div style={styles.guideGrid}>
-            <GuideChip icon="🟩" color="#00c853"
-              title={isEN ? 'Green candle = price UP'    : '綠色K線 = 價格上漲'}
-              desc={isEN  ? 'Close > Open that period.'  : '收盤價高於開盤價。'} />
-            <GuideChip icon="🟥" color="#ff1744"
-              title={isEN ? 'Red candle = price DOWN'    : '紅色K線 = 價格下跌'}
-              desc={isEN  ? 'Close < Open that period.'  : '收盤價低於開盤價。'} />
-            <GuideChip icon="📈" color="#f0b90b"
-              title={isEN ? 'Yellow line = close price'  : '黃線 = 收盤價走勢'}
-              desc={isEN  ? 'Visible in Line chart mode.' : '線圖模式顯示，直觀看價格走勢。'} />
-            <GuideChip icon="—" color="#2196f3"
-              title={isEN ? 'Blue = short MA'            : '藍線 = 短期均線'}
-              desc={isEN  ? 'Average of last N candles.' : '最近N根K線均倣價。'} />
-            <GuideChip icon="—" color="#ff9800"
-              title={isEN ? 'Orange = long MA'           : '橙線 = 長期均線'}
-              desc={isEN  ? 'The big-picture trend.'     : '代表大方向趨勢。'} />
-            <GuideChip icon="▲" color="#00c853"
-              title={isEN ? '▲ = BUY signal'             : '▲ = 買入訊號'}
-              desc={isEN  ? 'Short MA crossed above long MA.' : '短期均線穿上長期均線。'} />
-            <GuideChip icon="▼" color="#ff1744"
-              title={isEN ? '▼ = SELL signal'            : '▼ = 賣出訊號'}
-              desc={isEN  ? 'Short MA crossed below long MA.' : '短期均線穿下長期均線。'} />
+            <GuideChip icon="🟩" color="#00c853" title={isEN ? 'Green candle = price UP'    : '綠色K線 = 價格上漲'} desc={isEN ? 'Close > Open that period.'  : '收盤價高於開盤價。'} />
+            <GuideChip icon="🟥" color="#ff1744" title={isEN ? 'Red candle = price DOWN'    : '紅色K線 = 價格下跌'} desc={isEN ? 'Close < Open that period.'  : '收盤價低於開盤價。'} />
+            <GuideChip icon="📈" color="#f0b90b" title={isEN ? 'Yellow line = close price'  : '黃線 = 收盤價走勢'}  desc={isEN ? 'Visible in Line chart mode.' : '線圖模式顯示，直觀看價格走勢。'} />
+            <GuideChip icon="—"  color="#2196f3" title={isEN ? `Blue = MA${ma1Period}`      : `藍線 = MA${ma1Period}`}  desc={isEN ? `Average of last ${ma1Period} candles.` : `最近${ma1Period}根K線均價。`} />
+            <GuideChip icon="—"  color="#ff9800" title={isEN ? `Orange = MA${ma2Period}`    : `橙線 = MA${ma2Period}`}  desc={isEN ? 'The big-picture trend.'     : '代表大方向趨勢。'} />
+            <GuideChip icon="▲"  color="#00c853" title={isEN ? '▲ = BUY signal'             : '▲ = 買入訊號'}           desc={isEN ? 'Short MA crossed above long MA.' : '短期均線穿上長期均線。'} />
+            <GuideChip icon="▼"  color="#ff1744" title={isEN ? '▼ = SELL signal'            : '▼ = 賣出訊號'}           desc={isEN ? 'Short MA crossed below long MA.' : '短期均線穿下長期均線。'} />
           </div>
           <div style={styles.guideNote}>
             {isEN
-              ? '💡 Tip: Switch between Candle and Line view using the buttons above. Line view is cleaner for spotting the overall trend.'
-              : '💡 技巧：點擊上方按鈕可切換 K線 / 線圖模式。線圖模式更清晰看出整體趨勢。'}
+              ? '💡 Tip: Switch between Candle and Line view using the buttons above.'
+              : '💡 技巧：點擊上方按鈕可切換 K線 / 線圖模式。'}
           </div>
         </div>
       )}
@@ -246,27 +221,26 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH' }:
         <span style={styles.hint}>
           {isEN
             ? '👉 Drag to scroll · Scroll wheel to zoom · Toggle Candle/Line above'
-            : '👉 拖動滾動 K線 · 滚輪縮放 · 點擊上方按鈕切換 K線/線圖'}
+            : '👉 拖動滾動 K線 · 滾輪縮放 · 點擊上方按鈕切換 K線/線圖'}
         </span>
       </div>
     </div>
   );
 }
 
-// ── Sub-components ───────────────────────────────────────────────────────────────
 function ToggleBtn({ active, onClick, label, color }: { active: boolean; onClick: () => void; label: string; color: string }) {
   return (
     <button onClick={onClick} style={{
-      background:  active ? color + '22' : '#0f0f1a',
-      border:      `1px solid ${active ? color : '#2a2a3e'}`,
-      color:       active ? color : '#555',
-      padding:     '3px 10px',
+      background:   active ? color + '22' : '#0f0f1a',
+      border:       `1px solid ${active ? color : '#2a2a3e'}`,
+      color:        active ? color : '#555',
+      padding:      '3px 10px',
       borderRadius: 6,
-      cursor:      'pointer',
-      fontFamily:  'monospace',
-      fontSize:    '0.72rem',
-      fontWeight:  active ? 'bold' : 'normal',
-      transition:  'all 0.15s',
+      cursor:       'pointer',
+      fontFamily:   'monospace',
+      fontSize:     '0.72rem',
+      fontWeight:   active ? 'bold' : 'normal',
+      transition:   'all 0.15s',
     }}>
       {label}
     </button>
@@ -278,7 +252,7 @@ function LegendDot({ color, label, line }: { color: string; label: string; line?
     <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.7rem', color: '#888', fontFamily: 'monospace' }}>
       {line
         ? <span style={{ width: 14, height: 2, background: color, display: 'inline-block', borderRadius: 1 }} />
-        : <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />}
+        : <span style={{ width: 8,  height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />}
       {label}
     </span>
   );

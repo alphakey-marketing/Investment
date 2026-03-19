@@ -8,7 +8,9 @@ import type { Lang } from './i18n';
 import type { AppMode } from './types/mode';
 
 // ── Data freshness ──────────────────────────────────────────────
-export const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
+// Set to 6 min to match the 5-min Yahoo poll interval in useYahooKlines.
+// Previously 2 min — caused false STALE banner on every poll cycle.
+export const STALE_THRESHOLD_MS = 6 * 60 * 1000; // 6 minutes
 
 // ── Polling intervals ───────────────────────────────────────────
 export const STALE_CHECK_INTERVAL_MS = 5_000;
@@ -35,4 +37,4 @@ export const SIGNAL_TOAST_DURATION_MS = 12_000;
 
 // ── Stop-loss / take-profit defaults ──────────────────────────────
 export const DEFAULT_SL_FRACTION = 0.01;   // 1% — widened for ETF noise tolerance
-export const DEFAULT_TP_FRACTION = 0.025;  // 2.5% — aligns with backtest tpPct (was 0.03)
+export const DEFAULT_TP_FRACTION = 0.025;  // 2.5% — aligns with backtest tpPct
