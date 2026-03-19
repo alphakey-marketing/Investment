@@ -2,8 +2,8 @@
  * src/constants.ts
  * A1 — Single source of truth for all magic numbers and app-wide defaults.
  */
-import type { HKInterval } from './hooks/useFutuKlines';
-import type { FutuSymbol } from './types/futu';
+import type { HKInterval } from './hooks/useYahooKlines';
+import type { HKTicker } from './types/hkmarket';
 import type { Lang } from './i18n';
 import type { AppMode } from './types/mode';
 
@@ -14,11 +14,11 @@ export const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
 export const STALE_CHECK_INTERVAL_MS = 5_000;
 
 // ── Default chart / MA settings ───────────────────────────────────
-export const DEFAULT_SYMBOL: FutuSymbol    = 'HK.03081';  // Value Gold ETF
-export const DEFAULT_INTERVAL: HKInterval  = '1h';         // 1h suits ETF swing trading
-export const DEFAULT_MA1_PERIOD            = 20;
-export const DEFAULT_MA2_PERIOD            = 60;
-export const DEFAULT_CANDLE_LIMIT          = 200;
+export const DEFAULT_SYMBOL: HKTicker     = '3081.HK';  // Value Gold ETF
+export const DEFAULT_INTERVAL: HKInterval = '1h';        // 1h suits ETF swing trading
+export const DEFAULT_MA1_PERIOD           = 20;
+export const DEFAULT_MA2_PERIOD           = 60;
+export const DEFAULT_CANDLE_LIMIT         = 200;
 
 // ── Default app settings ──────────────────────────────────────────
 export const DEFAULT_MODE: AppMode = 'LIVE';

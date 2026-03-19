@@ -1,8 +1,8 @@
 {
-  "name": "futu-proxy",
+  "name": "yahoo-proxy",
   "version": "1.0.0",
   "type": "module",
-  "description": "Futu OpenAPI proxy server for K均交易法",
+  "description": "Yahoo Finance proxy server for K均交易法",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -11,7 +11,6 @@
   "dependencies": {
     "cors":               "^2.8.5",
     "express":            "^4.18.2",
-    "express-rate-limit": "^7.3.1",
-    "futu-api":           "^2.0.10"
+    "express-rate-limit": "^7.3.1"
   }
 }

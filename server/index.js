@@ -1,8 +1,7 @@
 /**
  * server/index.js — Yahoo Finance proxy for K均交易法
  *
- * Replit-hosted mode: Yahoo Finance only, no FutuOpenD dependency.
- * FutuOpenD code is commented out and can be re-enabled for local dev.
+ * Replit-hosted mode: Yahoo Finance only.
  *
  * Routes:
  *   GET /api/health
@@ -13,8 +12,6 @@
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-// ❌ FutuOpenD removed for Replit hosting — uncomment below to re-enable locally:
-// import { FutuQuoteContext } from './futuClient.js';
 
 const app = express();
 const PORT = process.env.PROXY_PORT ?? 3001;
@@ -160,13 +157,6 @@ app.get('/api/yahoo-klines/:ticker/:interval', async (req, res) => {
     res.status(502).json({ error: `Yahoo fetch failed: ${err.message}` });
   }
 });
-
-// ── Commented out: Futu OpenD routes (re-enable for local dev) ───────────────────────────────
-//
-// app.get('/api/klines/:symbol/:interval', async (req, res) => { ... });
-// app.get('/api/quote/:symbol',            async (req, res) => { ... });
-//
-// To restore: uncomment futuClient import at the top + the two route handlers.
 
 app.listen(PORT, () => {
   console.log(`\n🟢 Yahoo proxy ready on http://localhost:${PORT}`);
