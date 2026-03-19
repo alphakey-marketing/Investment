@@ -1,40 +1,37 @@
 // ─── Futu / HKEX Symbol & Contract Types ───────────────────────────────────────────────
 // Symbol format matches Futu OpenAPI codes.
-// Yahoo Finance equivalents used as fallback when FutuOpenD is not running.
-// FIX #4: removed stale TODO Sprint 2 comment — Sprint 2 is complete.
+// HK.03081 = Value Gold ETF (HKEX-listed physical gold ETF, HKD-priced)
 
 export type FutuSymbol =
-  | 'HK.MHImain'   // Mini Hang Seng Index Futures (continuous front month)
-  | 'HK.HSImain'   // Full Hang Seng Index Futures
-  | 'HK.HHImain';  // H-Shares Index Futures (HSCEI)
+  | 'HK.03081';  // Value Gold ETF — physical gold backed, HKEX listed
 
-// Yahoo Finance ticker equivalents (fallback when Futu proxy is offline)
-export const FUTU_TO_YAHOO: Record<FutuSymbol, string> = {
-  'HK.MHImain': '^HSI',
-  'HK.HSImain': '^HSI',
-  'HK.HHImain': '^HSCE',
+// No Yahoo fallback for HK ETF — use FutuOpenD exclusively
+export const FUTU_TO_YAHOO: Record<FutuSymbol, string | null> = {
+  'HK.03081': null,
 };
 
 export interface ContractSpec {
-  multiplier:   number;   // HKD per index point
+  multiplier:   number;   // lot size or point value
   tickSize:     number;   // minimum price movement
   currency:     'HKD';
-  marginEstHKD: number;   // approximate initial margin per contract
+  marginEstHKD: number;   // 0 for ETFs (no margin requirement)
   isFutures:    boolean;
 }
 
 export const CONTRACT_SPECS: Record<FutuSymbol, ContractSpec> = {
-  'HK.MHImain': { multiplier: 10,  tickSize: 1, currency: 'HKD', marginEstHKD: 22000,  isFutures: true },
-  'HK.HSImain': { multiplier: 50,  tickSize: 1, currency: 'HKD', marginEstHKD: 110000, isFutures: true },
-  'HK.HHImain': { multiplier: 50,  tickSize: 1, currency: 'HKD', marginEstHKD: 45000,  isFutures: true },
+  'HK.03081': {
+    multiplier:   100,    // 1 board lot = 100 units
+    tickSize:     0.01,   // HKD cents
+    currency:     'HKD',
+    marginEstHKD: 0,      // ETF — no margin requirement
+    isFutures:    false,
+  },
 };
 
 // HK trading sessions (HKT = UTC+8)
 export const HK_SESSIONS = {
-  morningOpen:    { h: 9,  m: 15 },
+  morningOpen:    { h: 9,  m: 30 },
   morningClose:   { h: 12, m: 0  },
   afternoonOpen:  { h: 13, m: 0  },
-  afternoonClose: { h: 16, m: 30 },
-  eveningOpen:    { h: 17, m: 15 },
-  eveningClose:   { h: 3,  m: 0  },
+  afternoonClose: { h: 16, m: 0  },
 };
