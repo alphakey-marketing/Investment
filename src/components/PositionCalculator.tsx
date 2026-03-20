@@ -31,7 +31,7 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
 
   const isEN = lang === 'EN';
 
-  const spec: ContractSpec = CONTRACT_SPECS[symbol as FutuSymbol] ?? {
+  const spec: ContractSpec = CONTRACT_SPECS[symbol as HKTicker] ?? {
     multiplier: 1, tickSize: 0.1, currency: 'HKD', marginEstHKD: 0, isFutures: false,
   };
   const isFutures  = spec.isFutures;
@@ -150,14 +150,14 @@ export default function PositionCalculator({ signal, lastPrice, onAddTrade, symb
                 </span>
                 <div style={styles.specGrid}>
                   <SpecChip icon="💵" label={isEN ? 'HKD per point' : '每點金額'} value={`HK$${multiplier}`} desc={isEN ? `1 contract moves HK$${multiplier} per index point` : `每張合約每點移動HK$${multiplier}`} />
-                  <SpecChip icon="🔒" label={isEN ? 'Est. Margin / contract' : '每張保證金(估)'} value={`HK$${spec.marginEstHKD.toLocaleString()}`} desc={isEN ? 'Required margin per contract (approx, check Futu for latest)' : '每張合約所需保證金（估算，以富途為準）'} />
+                  <SpecChip icon="🔒" label={isEN ? 'Est. Margin / contract' : '每張保證金(估)'} value={`HK$${spec.marginEstHKD.toLocaleString()}`} desc={isEN ? 'Required margin per contract (approx)' : '每張合約所需保證金（估算）'} />
                   <SpecChip icon="📏" label={isEN ? 'Tick size' : '最小波動'} value={`${spec.tickSize} pt = HK$${spec.tickSize * multiplier}`} desc={isEN ? 'Minimum price movement' : '最小價格變動'} />
                   <SpecChip icon="⚡" label={isEN ? 'Leverage' : '槓桿'} value={entryPrice > 0 ? `~${Math.round((entryPrice * multiplier) / spec.marginEstHKD)}×` : '---'} desc={isEN ? 'Approx leverage at current level' : '當前水平的估算槓桿倍數'} />
                 </div>
                 <div style={styles.futuresTip}>
                   {isEN
-                    ? '⚠️ Futures are leveraged. A 1% market move = ~10×+ P&L impact. Always use stop-loss orders in Futu.'
-                    : '⚠️ 期貨有槓桿。市場1%波動 = 約10倍以上盈虧影響。在富途交易時必須設定止蝕單。'}
+                    ? '⚠️ Futures are leveraged. A 1% market move = ~10×+ P&L impact. Always use stop-loss orders.'
+                    : '⚠️ 期貨有槓桿。市場1%波動 = 約10倍以上盈虧影響。交易時必須設定止蝕單。'}
                 </div>
               </div>
             </div>
