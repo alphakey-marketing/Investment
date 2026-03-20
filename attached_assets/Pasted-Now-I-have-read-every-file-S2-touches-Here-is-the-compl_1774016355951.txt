@@ -1,0 +1,957 @@
+Now I have read every file S2 touches. Here is the complete, line-by-line change guide.
+
+***
+
+## S2 Overview: 4 changes
+
+| # | File | Action |
+|---|---|---|
+| 1 | `src/types/mode.ts` | Add `rangeFiltered` + `swingData` fields to `BacktestResult` |
+| 2 | `src/hooks/useAppState.ts` | Add `ma3Period` state + `setMa3Period` action |
+| 3 | `src/utils/backtest.ts` | Full replacement — dynamic SL/TP, swing engine, trailing exit |
+| 4 | `src/components/BacktestPanel.tsx` | Pass `ma3Period`, remove SL%/TP% inputs, add Range-filtered stat |
+
+`App.tsx` also needs two small edits to pass `ma3Period` — covered at the end.
+
+***
+
+## Change 1 of 5 — `src/types/mode.ts`
+
+Open the file. Find the `BacktestResult` interface :
+
+```typescript
+// ── FIND this exact block ────────────────────────────────────────
+export interface BacktestResult {
+  totalSignals:    number;
+  wins:            number;
+  losses:          number;
+  winRate:         number;
+  totalPnl:        number;  // net of commission
+  totalPnlPct:     number;
+  maxDrawdown:     number;  // net of commission
+  profitFactor:    number;  // net of commission
+  trades:          BacktestTrade[];
+  totalCommission: number;  // Fix 5: total commission paid across all trades
+}
+```
+
+**Replace with:**
+
+```typescript
+// ── REPLACE ───────────────────────────────────────────────────────
+export interface BacktestResult {
+  totalSignals:    number;
+  wins:            number;
+  losses:          number;
+  winRate:         number;
+  totalPnl:        number;  // net of commission
+  totalPnlPct:     number;
+  maxDrawdown:     number;  // net of commission
+  profitFactor:    number;  // net of commission
+  trades:          BacktestTrade[];
+  totalCommission: number;
+  // v2 additions
+  rangeFiltered:   number;  // candles skipped because MA stack was RANGE
+  avgSlDist:       number;  // average SL distance in price points (structure-based)
+  avgTpDist:       number;  // average TP distance in price points
+}
+```
+
+Now find `BacktestTrade` and add two fields to it :
+
+```typescript
+// ── FIND this exact block ────────────────────────────────────────
+export interface BacktestTrade {
+  type:       'LONG' | 'SHORT';
+  entryTime:  number;
+  exitTime:   number;
+  entryPrice: number;
+  exitPrice:  number;
+  pnl:        number;        // net of commission
+  pnlPct:     number;
+  exitReason: 'TP' | 'SL' | 'END';
+}
+```
+
+**Replace with:**
+
+```typescript
+// ── REPLACE ───────────────────────────────────────────────────────
+export interface BacktestTrade {
+  type:       'LONG' | 'SHORT';
+  entryTime:  number;
+  exitTime:   number;
+  entryPrice: number;
+  exitPrice:  number;
+  pnl:        number;        // net of commission
+  pnlPct:     number;
+  exitReason: 'TP' | 'SL' | 'TRAIL' | 'END';  // TRAIL = MA30 trailing exit
+  sl:         number;   // the actual SL price used for this trade
+  tp:         number;   // the actual TP price used for this trade
+}
+```
+
+**Full final `mode.ts`** for verification:
+
+```typescript
+export type AppMode = 'LIVE' | 'PAPER' | 'BACKTEST';
+
+export interface PaperAccount {
+  balance:        number;
+  initialBalance: number;
+  openPosition:   OpenPosition | null;
+}
+
+export interface OpenPosition {
+  symbol:      string;
+  type:        'LONG' | 'SHORT';
+  entryPrice:  number;
+  quantity:    number;
+  capitalUsed: number;
+  stopLoss:    number;
+  takeProfit:  number;
+  openTime:    number;
+}
+
+export interface BacktestResult {
+  totalSignals:    number;
+  wins:            number;
+  losses:          number;
+  winRate:         number;
+  totalPnl:        number;
+  totalPnlPct:     number;
+  maxDrawdown:     number;
+  profitFactor:    number;
+  trades:          BacktestTrade[];
+  totalCommission: number;
+  rangeFiltered:   number;  // candles skipped — MA stack was RANGE
+  avgSlDist:       number;  // avg structure-based SL distance
+  avgTpDist:       number;  // avg structure-based TP distance
+}
+
+export interface BacktestTrade {
+  type:       'LONG' | 'SHORT';
+  entryTime:  number;
+  exitTime:   number;
+  entryPrice: number;
+  exitPrice:  number;
+  pnl:        number;
+  pnlPct:     number;
+  exitReason: 'TP' | 'SL' | 'TRAIL' | 'END';
+  sl:         number;
+  tp:         number;
+}
+```
+
+***
+
+## Change 2 of 5 — `src/hooks/useAppState.ts`
+
+Three precise surgical edits :
+
+**Edit 2a** — imports block. Find:
+
+```typescript
+// ── FIND ────────────────────────────────────────────────────────
+import {
+  DEFAULT_MODE, DEFAULT_LANG, DEFAULT_SYMBOL, DEFAULT_INTERVAL,
+  DEFAULT_MA1_PERIOD, DEFAULT_MA2_PERIOD,
+  LS_ONBOARD_DISMISSED, LS_ROADMAP_DISMISSED,
+  STALE_CHECK_INTERVAL_MS,
+} from '../constants';
+```
+
+**Replace with:**
+
+```typescript
+// ── REPLACE ─────────────────────────────────────────────────────
+import {
+  DEFAULT_MODE, DEFAULT_LANG, DEFAULT_SYMBOL, DEFAULT_INTERVAL,
+  DEFAULT_MA1_PERIOD, DEFAULT_MA2_PERIOD, DEFAULT_MA3_PERIOD,
+  LS_ONBOARD_DISMISSED, LS_ROADMAP_DISMISSED,
+  STALE_CHECK_INTERVAL_MS,
+} from '../constants';
+```
+
+**Edit 2b** — `AppState` interface. Find:
+
+```typescript
+// ── FIND ────────────────────────────────────────────────────────
+  ma1Period:     number;
+  ma2Period:     number;
+```
+
+**Replace with:**
+
+```typescript
+// ── REPLACE ─────────────────────────────────────────────────────
+  ma1Period:     number;   // MA5  — fast line
+  ma2Period:     number;   // MA30 — trend anchor
+  ma3Period:     number;   // MA150 — macro filter (NEW — v2)
+```
+
+**Edit 2c** — `AppActions` interface. Find:
+
+```typescript
+// ── FIND ────────────────────────────────────────────────────────
+  setMa1Period:     (p: number) => void;
+  setMa2Period:     (p: number) => void;
+```
+
+**Replace with:**
+
+```typescript
+// ── REPLACE ─────────────────────────────────────────────────────
+  setMa1Period:     (p: number) => void;
+  setMa2Period:     (p: number) => void;
+  setMa3Period:     (p: number) => void;  // NEW — v2
+```
+
+**Edit 2d** — inside `useAppState()` function body. Find:
+
+```typescript
+// ── FIND ────────────────────────────────────────────────────────
+  const [ma1Period,     setMa1Period]     = useState(DEFAULT_MA1_PERIOD);
+  const [ma2Period,     setMa2Period]     = useState(DEFAULT_MA2_PERIOD);
+```
+
+**Replace with:**
+
+```typescript
+// ── REPLACE ─────────────────────────────────────────────────────
+  const [ma1Period,     setMa1Period]     = useState(DEFAULT_MA1_PERIOD);
+  const [ma2Period,     setMa2Period]     = useState(DEFAULT_MA2_PERIOD);
+  const [ma3Period,     setMa3Period]     = useState(DEFAULT_MA3_PERIOD);  // NEW
+```
+
+**Edit 2e** — `state` object literal. Find:
+
+```typescript
+// ── FIND ────────────────────────────────────────────────────────
+  const state: AppState = {
+    mode, lang, symbol, klineInterval, ma1Period, ma2Period,
+    showOnboard, showRoadmap, now,
+  };
+```
+
+**Replace with:**
+
+```typescript
+// ── REPLACE ─────────────────────────────────────────────────────
+  const state: AppState = {
+    mode, lang, symbol, klineInterval, ma1Period, ma2Period, ma3Period,
+    showOnboard, showRoadmap, now,
+  };
+```
+
+**Edit 2f** — `actions` object literal. Find:
+
+```typescript
+// ── FIND ────────────────────────────────────────────────────────
+  const actions: AppActions = {
+    setMode, setLang, setSymbol, setKlineInterval, setMa1Period, setMa2Period,
+    dismissOnboard, dismissRoadmap, showRoadmapAgain,
+  };
+```
+
+**Replace with:**
+
+```typescript
+// ── REPLACE ─────────────────────────────────────────────────────
+  const actions: AppActions = {
+    setMode, setLang, setSymbol, setKlineInterval,
+    setMa1Period, setMa2Period, setMa3Period,
+    dismissOnboard, dismissRoadmap, showRoadmapAgain,
+  };
+```
+
+**Full final `useAppState.ts`** for verification:
+
+```typescript
+/**
+ * src/hooks/useAppState.ts
+ * A2 — Centralized application state manager
+ * Replaces 10+ useState calls in App.tsx with a single hook.
+ *
+ * v2: Added ma3Period (MA150) for K均 triple-MA stack.
+ */
+import { useState, useEffect } from 'react';
+import type { HKTicker } from '../types/hkmarket';
+import type { HKInterval } from './useYahooKlines';
+import type { AppMode } from '../types/mode';
+import type { Lang } from '../i18n';
+import {
+  DEFAULT_MODE, DEFAULT_LANG, DEFAULT_SYMBOL, DEFAULT_INTERVAL,
+  DEFAULT_MA1_PERIOD, DEFAULT_MA2_PERIOD, DEFAULT_MA3_PERIOD,
+  LS_ONBOARD_DISMISSED, LS_ROADMAP_DISMISSED,
+  STALE_CHECK_INTERVAL_MS,
+} from '../constants';
+
+export interface AppState {
+  // ── Core trading settings ─────────────────────────────────────────────
+  mode:          AppMode;
+  lang:          Lang;
+  symbol:        HKTicker;
+  klineInterval: HKInterval;
+  ma1Period:     number;   // MA5  — fast line
+  ma2Period:     number;   // MA30 — trend anchor
+  ma3Period:     number;   // MA150 — macro filter (v2)
+
+  // ── UI flags ─────────────────────────────────────────────────────────
+  showOnboard: boolean;
+  showRoadmap: boolean;
+
+  // ── Staleness ticker ─────────────────────────────────────────────────
+  now: number;
+}
+
+export interface AppActions {
+  setMode:          (m: AppMode) => void;
+  setLang:          (l: Lang) => void;
+  setSymbol:        (s: HKTicker) => void;
+  setKlineInterval: (i: HKInterval) => void;
+  setMa1Period:     (p: number) => void;
+  setMa2Period:     (p: number) => void;
+  setMa3Period:     (p: number) => void;  // v2
+  dismissOnboard:   () => void;
+  dismissRoadmap:   () => void;
+  showRoadmapAgain: () => void;
+}
+
+export function useAppState(): [AppState, AppActions] {
+  const [mode,          setMode]          = useState<AppMode>(DEFAULT_MODE);
+  const [lang,          setLang]          = useState<Lang>(DEFAULT_LANG);
+  const [symbol,        setSymbol]        = useState<HKTicker>(DEFAULT_SYMBOL);
+  const [klineInterval, setKlineInterval] = useState<HKInterval>(DEFAULT_INTERVAL);
+  const [ma1Period,     setMa1Period]     = useState(DEFAULT_MA1_PERIOD);
+  const [ma2Period,     setMa2Period]     = useState(DEFAULT_MA2_PERIOD);
+  const [ma3Period,     setMa3Period]     = useState(DEFAULT_MA3_PERIOD);  // v2
+  const [showOnboard,   setShowOnboard]   = useState(() => !localStorage.getItem(LS_ONBOARD_DISMISSED));
+  const [showRoadmap,   setShowRoadmap]   = useState(() => !localStorage.getItem(LS_ROADMAP_DISMISSED));
+  const [now,           setNow]           = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), STALE_CHECK_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const dismissOnboard = () => {
+    localStorage.setItem(LS_ONBOARD_DISMISSED, '1');
+    setShowOnboard(false);
+  };
+
+  const dismissRoadmap = () => {
+    localStorage.setItem(LS_ROADMAP_DISMISSED, '1');
+    setShowRoadmap(false);
+  };
+
+  const showRoadmapAgain = () => {
+    localStorage.removeItem(LS_ROADMAP_DISMISSED);
+    setShowRoadmap(true);
+  };
+
+  const state: AppState = {
+    mode, lang, symbol, klineInterval, ma1Period, ma2Period, ma3Period,
+    showOnboard, showRoadmap, now,
+  };
+
+  const actions: AppActions = {
+    setMode, setLang, setSymbol, setKlineInterval,
+    setMa1Period, setMa2Period, setMa3Period,
+    dismissOnboard, dismissRoadmap, showRoadmapAgain,
+  };
+
+  return [state, actions];
+}
+```
+
+***
+
+## Change 3 of 5 — `src/utils/backtest.ts` (FULL REPLACEMENT)
+
+**Delete the entire existing file**  and replace with:
+
+```typescript
+/**
+ * src/utils/backtest.ts — K均交易法 v2 Backtester
+ *
+ * What changed from v1:
+ *   • Triple MA stack (MA5/MA30/MA150) replaces single MA20 anchor
+ *   • RANGE candles are counted as rangeFiltered and skipped — no entry
+ *   • Entry requires: BULL/BEAR stack + HH/LL pivot breakout + MA30 proximity
+ *   • SL is structure-based: previous confirmed swing LOW (LONG) or HIGH (SHORT)
+ *   • TP is dynamic: entry ± SL_distance × tpRatio (default 2.5:1 RR)
+ *   • Trailing exit: if price crosses back through MA30 after profit > 1× SL_dist
+ *   • slPct / tpPct params are REMOVED — SL/TP are now fully dynamic
+ *   • commissionPerRound HK$60 round-trip (unchanged)
+ *   • Cooldown 3 candles after any exit (unchanged)
+ *   • END trades pay half commission (entry-side only, unchanged)
+ *
+ * New output fields on BacktestResult:
+ *   rangeFiltered — how many entry-eligible candles were blocked by RANGE filter
+ *   avgSlDist     — average structure SL distance in price points
+ *   avgTpDist     — average structure TP distance in price points
+ *
+ * New fields on BacktestTrade:
+ *   sl, tp        — the actual SL/TP prices used for that trade
+ *   exitReason    — now includes 'TRAIL' in addition to 'TP'/'SL'/'END'
+ */
+import { Candle }                              from '../types/binance';
+import { BacktestResult, BacktestTrade }       from '../types/mode';
+import { getLatestSMA }                        from './ma';
+import { isHKTradingHours, isHKWeekend }       from './hkSession';
+import { findSwingPoints, getLatestSwings }    from './swingPoints';
+import { getMATrend, ma30Role }                from './maTrend';
+
+export function runBacktest(
+  candles:               Candle[],
+  fastPeriod             = 5,     // MA5
+  midPeriod              = 30,    // MA30
+  slowPeriod             = 150,   // MA150
+  shares                 = 100,   // ETF shares per trade
+  tpRatio                = 2.5,   // TP = SL_distance × tpRatio  →  RR = 2.5:1
+  proximityPct           = 0.008, // max distance from MA30 to allow entry (0.8%)
+  commissionPerRound     = 60,    // HKD round-trip (entry + exit)
+  swingLookback          = 2,     // bars on each side to confirm a pivot
+  includeFuturesEvening  = false, // ETF 3081.HK has no evening session
+): BacktestResult {
+
+  const trades: BacktestTrade[]   = [];
+  let inTrade                     = false;
+  let currentTrade: Partial<BacktestTrade> | null = null;
+  let slPrice                     = 0;
+  let tpPrice                     = 0;
+
+  let peak                        = 0;
+  let maxDrawdown                 = 0;
+  let runningPnl                  = 0;
+  let firstEntryPrice             = 0;
+  let totalCommission             = 0;
+  let rangeFiltered               = 0;   // counts RANGE-blocked entry candles
+  let cooldown                    = 0;
+  const COOLDOWN                  = 3;
+
+  // Need slowPeriod bars for MA150 warmup + swing detection on each side
+  const startIdx = slowPeriod + swingLookback * 4 + 5;
+
+  for (let i = startIdx; i < candles.length; i++) {
+    const slice = candles.slice(0, i + 1);
+    const c     = candles[i];
+
+    // ── Get MA30 for trailing exit check ──────────────────────────────────
+    const ma30now = getLatestSMA(slice, midPeriod);
+    if (!ma30now) continue;
+
+    // ════════════════════════════════════════════════════════════════════
+    // EXIT CHECK — happens every candle regardless of session
+    // ════════════════════════════════════════════════════════════════════
+    if (inTrade && currentTrade) {
+      let exitPrice:  number | null = null;
+      let exitReason: 'TP' | 'SL' | 'TRAIL' | null = null;
+
+      if (currentTrade.type === 'LONG') {
+        // Priority order: SL first (worst case), then TP, then trailing
+        if (c.low <= slPrice) {
+          exitPrice  = slPrice;
+          exitReason = 'SL';
+        } else if (c.high >= tpPrice) {
+          exitPrice  = tpPrice;
+          exitReason = 'TP';
+        } else {
+          // Trailing exit: price has crossed back below MA30 AND
+          // profit is already > 1× the original SL distance (locked-in profit)
+          const origSlDist   = currentTrade.entryPrice! - slPrice;
+          const profitSoFar  = c.close - currentTrade.entryPrice!;
+          if (c.close < ma30now && profitSoFar > origSlDist) {
+            exitPrice  = c.close;
+            exitReason = 'TRAIL';
+          }
+        }
+      } else {
+        // SHORT
+        if (c.high >= slPrice) {
+          exitPrice  = slPrice;
+          exitReason = 'SL';
+        } else if (c.low <= tpPrice) {
+          exitPrice  = tpPrice;
+          exitReason = 'TP';
+        } else {
+          const origSlDist  = slPrice - currentTrade.entryPrice!;
+          const profitSoFar = currentTrade.entryPrice! - c.close;
+          if (c.close > ma30now && profitSoFar > origSlDist) {
+            exitPrice  = c.close;
+            exitReason = 'TRAIL';
+          }
+        }
+      }
+
+      if (exitPrice != null && exitReason != null) {
+        const ptDiff    = currentTrade.type === 'LONG'
+          ? exitPrice - currentTrade.entryPrice!
+          : currentTrade.entryPrice! - exitPrice;
+        const grossPnl  = ptDiff * shares;
+        const netPnl    = grossPnl - commissionPerRound;
+        totalCommission += commissionPerRound;
+
+        const notional  = currentTrade.entryPrice! * shares;
+        const pnlPct    = notional > 0
+          ? parseFloat(((netPnl / notional) * 100).toFixed(2))
+          : 0;
+
+        trades.push({
+          ...(currentTrade as BacktestTrade),
+          exitTime:   c.time,
+          exitPrice,
+          pnl:        parseFloat(netPnl.toFixed(2)),
+          pnlPct,
+          exitReason,
+        });
+
+        runningPnl += netPnl;
+        if (runningPnl > peak) peak = runningPnl;
+        const dd = peak - runningPnl;
+        if (dd > maxDrawdown) maxDrawdown = dd;
+
+        inTrade      = false;
+        currentTrade = null;
+        cooldown     = COOLDOWN;
+      }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // ENTRY CHECK
+    // ════════════════════════════════════════════════════════════════════
+    if (!inTrade) {
+      // Honour cooldown
+      if (cooldown > 0) { cooldown--; continue; }
+
+      // Session + weekend filter
+      if (!isHKTradingHours(c.time, includeFuturesEvening)) continue;
+      if (isHKWeekend(c.time)) continue;
+
+      // ── Gate 2: Triple MA stack ──────────────────────────────────────
+      const stack = getMATrend(slice, fastPeriod, midPeriod, slowPeriod);
+      if (!stack) continue;
+      if (stack.trend === 'RANGE') {
+        rangeFiltered++; // count every entry-eligible candle blocked by RANGE
+        continue;
+      }
+
+      // ── Swing points (exclude last swingLookback unconfirmed bars) ───
+      const confirmedSlice = slice.slice(0, slice.length - swingLookback);
+      const swings         = findSwingPoints(confirmedSlice, swingLookback);
+
+      const price = c.close;
+
+      // ── LONG ──────────────────────────────────────────────────────────
+      if (stack.trend === 'BULL') {
+        const recentHighs = getLatestSwings(swings, 'HIGH', 2);
+        const recentLows  = getLatestSwings(swings, 'LOW',  1);
+
+        if (recentHighs.length < 2) continue;
+
+        const [prevHigh, lastHigh] = recentHighs;
+
+        // Gate 3: must be a Higher High
+        if (lastHigh.price <= prevHigh.price) continue;
+
+        // Gate 4: price must have broken above the confirmed swing high
+        if (price <= lastHigh.price) continue;
+
+        // Gate 5: price must be near MA30 (support role)
+        if (ma30Role(price, stack.ma30, proximityPct) !== 'support') continue;
+
+        // Dynamic SL at previous swing LOW
+        slPrice = recentLows.length > 0
+          ? recentLows[0].price
+          : price * (1 - 0.015);
+        tpPrice = price + (price - slPrice) * tpRatio;
+
+        if (firstEntryPrice === 0) firstEntryPrice = price;
+        inTrade = true;
+        currentTrade = {
+          type:       'LONG',
+          entryTime:  c.time,
+          entryPrice: price,
+          exitTime:   0,
+          exitPrice:  0,
+          pnl:        0,
+          pnlPct:     0,
+          exitReason: 'END',
+          sl:         slPrice,
+          tp:         tpPrice,
+        };
+
+      // ── SHORT ─────────────────────────────────────────────────────────
+      } else if (stack.trend === 'BEAR') {
+        const recentLows  = getLatestSwings(swings, 'LOW',  2);
+        const recentHighs = getLatestSwings(swings, 'HIGH', 1);
+
+        if (recentLows.length < 2) continue;
+
+        const [prevLow, lastLow] = recentLows;
+
+        // Gate 3: must be a Lower Low
+        if (lastLow.price >= prevLow.price) continue;
+
+        // Gate 4: price must have broken below the confirmed swing low
+        if (price >= lastLow.price) continue;
+
+        // Gate 5: price must be near MA30 (resistance role)
+        if (ma30Role(price, stack.ma30, proximityPct) !== 'resistance') continue;
+
+        // Dynamic SL at previous swing HIGH
+        slPrice = recentHighs.length > 0
+          ? recentHighs[0].price
+          : price * (1 + 0.015);
+        tpPrice = price - (slPrice - price) * tpRatio;
+
+        if (firstEntryPrice === 0) firstEntryPrice = price;
+        inTrade = true;
+        currentTrade = {
+          type:       'SHORT',
+          entryTime:  c.time,
+          entryPrice: price,
+          exitTime:   0,
+          exitPrice:  0,
+          pnl:        0,
+          pnlPct:     0,
+          exitReason: 'END',
+          sl:         slPrice,
+          tp:         tpPrice,
+        };
+      }
+    }
+  }
+
+  // ── Close any open trade at the last candle (END) ──────────────────────
+  if (inTrade && currentTrade) {
+    const last      = candles[candles.length - 1];
+    const ptDiff    = currentTrade.type === 'LONG'
+      ? last.close - currentTrade.entryPrice!
+      : currentTrade.entryPrice! - last.close;
+    const grossPnl  = ptDiff * shares;
+    const halfComm  = commissionPerRound / 2;   // entry-side only for open trades
+    const netPnl    = grossPnl - halfComm;
+    totalCommission += halfComm;
+    const notional  = currentTrade.entryPrice! * shares;
+    const pnlPct    = notional > 0
+      ? parseFloat(((netPnl / notional) * 100).toFixed(2))
+      : 0;
+
+    trades.push({
+      ...(currentTrade as BacktestTrade),
+      exitTime:   last.time,
+      exitPrice:  last.close,
+      pnl:        parseFloat(netPnl.toFixed(2)),
+      pnlPct,
+      exitReason: 'END',
+    });
+    runningPnl += netPnl;
+    if (runningPnl > peak) peak = runningPnl;
+    const dd = peak - runningPnl;
+    if (dd > maxDrawdown) maxDrawdown = dd;
+  }
+
+  // ── Aggregate stats ────────────────────────────────────────────────────
+  const wins      = trades.filter(t => t.pnl > 0);
+  const losses    = trades.filter(t => t.pnl < 0);
+  const totalPnl  = trades.reduce((s, t) => s + t.pnl, 0);
+  const totalWin  = wins.reduce((s, t) => s + t.pnl, 0);
+  const totalLoss = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
+
+  const refNotional  = firstEntryPrice > 0 ? firstEntryPrice * shares : 1;
+  const totalPnlPct  = parseFloat(((totalPnl / refNotional) * 100).toFixed(1));
+
+  // Average structure-based SL and TP distances
+  const slDists  = trades.map(t =>
+    t.type === 'LONG' ? t.entryPrice - t.sl : t.sl - t.entryPrice
+  ).filter(d => d > 0);
+  const tpDists  = trades.map(t =>
+    t.type === 'LONG' ? t.tp - t.entryPrice : t.entryPrice - t.tp
+  ).filter(d => d > 0);
+
+  const avgSlDist = slDists.length > 0
+    ? parseFloat((slDists.reduce((a, b) => a + b, 0) / slDists.length).toFixed(3))
+    : 0;
+  const avgTpDist = tpDists.length > 0
+    ? parseFloat((tpDists.reduce((a, b) => a + b, 0) / tpDists.length).toFixed(3))
+    : 0;
+
+  return {
+    totalSignals:    trades.length,
+    wins:            wins.length,
+    losses:          losses.length,
+    winRate:         trades.length > 0
+      ? parseFloat(((wins.length / trades.length) * 100).toFixed(1))
+      : 0,
+    totalPnl:        parseFloat(totalPnl.toFixed(2)),
+    totalPnlPct,
+    maxDrawdown:     parseFloat(maxDrawdown.toFixed(2)),
+    profitFactor:    totalLoss > 0
+      ? parseFloat((totalWin / totalLoss).toFixed(2))
+      : totalWin > 0 ? 99 : 0,
+    trades,
+    totalCommission: parseFloat(totalCommission.toFixed(2)),
+    rangeFiltered,
+    avgSlDist,
+    avgTpDist,
+  };
+}
+```
+
+***
+
+## Change 4 of 5 — `src/components/BacktestPanel.tsx`
+
+Four surgical edits. No rewrites of the display or chart logic :
+
+**Edit 4a** — Props interface. Find:
+
+```typescript
+// ── FIND ────────────────────────────────────────────────────────
+interface Props {
+  candles:   Candle[];
+  ma1Period: number;
+  ma2Period: number;
+  symbol:    string;
+  lang:      Lang;
+}
+```
+
+**Replace with:**
+
+```typescript
+// ── REPLACE ─────────────────────────────────────────────────────
+interface Props {
+  candles:   Candle[];
+  ma1Period: number;
+  ma2Period: number;
+  ma3Period: number;   // NEW — MA150 for triple stack
+  symbol:    string;
+  lang:      Lang;
+}
+```
+
+**Edit 4b** — destructure in the function signature. Find:
+
+```typescript
+// ── FIND ────────────────────────────────────────────────────────
+export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, lang }: Props) {
+```
+
+**Replace with:**
+
+```typescript
+// ── REPLACE ─────────────────────────────────────────────────────
+export default function BacktestPanel({ candles, ma1Period, ma2Period, ma3Period, symbol, lang }: Props) {
+```
+
+**Edit 4c** — `handleRun`. Find the entire function body:
+
+```typescript
+// ── FIND ────────────────────────────────────────────────────────
+  const handleRun = () => {
+    if (candles.length < Math.max(ma1Period, ma2Period) + 10) return;
+    const r = runBacktest(
+      candles, ma1Period, ma2Period,
+      contracts,
+      parseFloat(slPct) / 100 || 0.005,
+      parseFloat(tpPct) / 100 || 0.015,
+      0.005,
+      commPerRound,
+      false
+    );
+    setResult(r); setRan(true);
+  };
+```
+
+**Replace with:**
+
+```typescript
+// ── REPLACE ─────────────────────────────────────────────────────
+  const handleRun = () => {
+    // v2: needs slowPeriod (MA150) + swing warmup — minimum ~169 bars
+    if (candles.length < ma3Period + 20) return;
+    const r = runBacktest(
+      candles,
+      ma1Period,    // MA5
+      ma2Period,    // MA30
+      ma3Period,    // MA150
+      contracts,    // shares
+      2.5,          // tpRatio — SL × 2.5, fixed by book rules
+      0.008,        // proximityPct — 0.8% from MA30
+      commPerRound,
+      2,            // swingLookback
+      false         // no evening for ETF
+    );
+    setResult(r); setRan(true);
+  };
+```
+
+**Edit 4d** — Add `rangeFiltered` stat box. Find the summaryGrid block, specifically the last `<SBox ...>` for `totalCommission`:
+
+```typescript
+// ── FIND this SBox (it is the LAST one in the summaryGrid) ──────
+            <SBox
+              label={isEN ? 'Total Commission' : '總會費'}
+              value={`-${fmtHKD(result.totalCommission)}`}
+              color="#888"
+              tooltip={isEN
+                ? `${result.totalSignals} trades × HK$${commPerRound}/round = ${fmtHKD(result.totalCommission)} in fees`
+                : `${result.totalSignals} 筆 × HK$${commPerRound}/回 = ${fmtHKD(result.totalCommission)} 會費`}
+            />
+```
+
+**Replace with (add two new boxes immediately AFTER the commission SBox):**
+
+```typescript
+// ── REPLACE — keep the original commission SBox, add 2 new ones after ──
+            <SBox
+              label={isEN ? 'Total Commission' : '總會費'}
+              value={`-${fmtHKD(result.totalCommission)}`}
+              color="#888"
+              tooltip={isEN
+                ? `${result.totalSignals} trades × HK$${commPerRound}/round = ${fmtHKD(result.totalCommission)} in fees`
+                : `${result.totalSignals} 筆 × HK$${commPerRound}/回 = ${fmtHKD(result.totalCommission)} 會費`}
+            />
+            <SBox
+              label={isEN ? 'Range Filtered' : '盤整過濾'}
+              value={result.rangeFiltered.toString()}
+              color="#f0b90b"
+              tooltip={isEN
+                ? `${result.rangeFiltered} entry-eligible candles skipped because MA5/MA30/MA150 were not cleanly aligned (RANGE state). This is the K均 RANGE kill-switch working correctly.`
+                : `${result.rangeFiltered} 根符合條件的K線因MA5/MA30/MA150排列混亂（盤整狀態）而被過濾。這是K均均線排列過濾器正常運作。`}
+            />
+            <SBox
+              label={isEN ? 'Avg SL Dist' : '平均止損距離'}
+              value={result.avgSlDist > 0 ? result.avgSlDist.toFixed(3) : '—'}
+              color="#888"
+              tooltip={isEN
+                ? `Average structure-based SL distance (price points). Based on previous swing point, not a fixed %. Avg TP = ${result.avgTpDist.toFixed(3)} pts.`
+                : `平均結構止損距離（價格點數），基於前一個擺動低/高點，非固定百分比。平均止盈 = ${result.avgTpDist.toFixed(3)} 點。`}
+            />
+```
+
+**Edit 4e** — Remove the now-unused `slPct` and `tpPct` state variables and their input fields. Find and delete these lines from the state declarations at the top of the component:
+
+```typescript
+// ── FIND and DELETE these 2 lines ───────────────────────────────
+  const [slPct,          setSlPct]          = useState(isFutures ? '0.5' : '1');
+  const [tpPct,          setTpPct]          = useState(isFutures ? '1.5' : '3');
+```
+
+Then find and delete the two `<Field>` blocks for Stop Loss and Take Profit in the JSX (the ones that used `slPct` / `tpPct`):
+
+```tsx
+{/* ── FIND and DELETE this entire Field block ── */}
+        <Field
+          label={isEN ? 'Stop Loss %' : '止蚁 %'}
+          hint={isEN ? `≈ ${slPts} pts = -${fmtHKD(slHKD)} per trade` : `約 ${slPts} 點 = -${fmtHKD(slHKD)}/筆`}
+        >
+          <input style={styles.input} type="number" value={slPct} onChange={(e) => setSlPct(e.target.value)} />
+        </Field>
+
+{/* ── FIND and DELETE this entire Field block ── */}
+        <Field
+          label={isEN ? `Take Profit % (R:R=${rrRatio.toFixed(1)}:1)` : `止盈 %（風報比=${rrRatio.toFixed(1)}:1）`}
+          hint={isEN ? `≈ ${tpPts} pts = +${fmtHKD(tpHKD)} per trade` : `約 ${tpPts} 點 = +${fmtHKD(tpHKD)}/筆`}
+        >
+          <input style={styles.input} type="number" value={tpPct} onChange={(e) => setTpPct(e.target.value)} />
+        </Field>
+```
+
+**Replace both deleted Field blocks with a single static info box** so the user understands SL/TP are now dynamic:
+
+```tsx
+{/* ── ADD this in place of the deleted SL/TP fields ─────────── */}
+        <Field
+          label={isEN ? 'SL / TP Mode' : '止損/止盈模式'}
+          hint={isEN
+            ? 'v2: Structure-based. SL = prev swing LOW/HIGH. TP = SL × 2.5 (RR 2.5:1). Fixed by book rules.'
+            : 'v2：結構止損。SL = 前擺動低/高點，TP = SL × 2.5（風報比2.5:1）。按書本規則固定。'}
+        >
+          <div style={{
+            background: '#0f0f1a', border: '1px solid #2a2a3e',
+            color: '#f0b90b', padding: '6px 10px', borderRadius: 6,
+            fontFamily: 'monospace', fontSize: '0.78rem',
+          }}>
+            {isEN ? '⚡ Dynamic (K均 v2)' : '⚡ 動態結構止損 (K均 v2)'}
+          </div>
+        </Field>
+```
+
+Also delete these now-unused variables that depended on `slPct`/`tpPct`:
+
+```typescript
+// ── FIND and DELETE these 4 lines ───────────────────────────────
+  const rrRatio      = parseFloat(tpPct)  / parseFloat(slPct)  || 3;
+  ...
+  const sampleEntry = candles[candles.length - 1]?.close ?? 20000;
+  const slPts = Math.round(sampleEntry * (parseFloat(slPct) / 100));
+  const tpPts = Math.round(sampleEntry * (parseFloat(tpPct) / 100));
+  const slHKD = slPts * multiplier * contracts;
+  const tpHKD = tpPts * multiplier * contracts;
+```
+
+***
+
+## Change 5 of 5 — `src/App.tsx` (2 small edits only)
+
+You do not need to read all 23k bytes — only two places need updating . Search for these patterns:
+
+**Edit 5a** — where `BacktestPanel` is rendered. Find:
+
+```tsx
+// ── FIND ────────────────────────────────────────────────────────
+<BacktestPanel
+  candles={candles}
+  ma1Period={state.ma1Period}
+  ma2Period={state.ma2Period}
+  symbol={state.symbol}
+  lang={state.lang}
+/>
+```
+
+**Replace with:**
+
+```tsx
+// ── REPLACE ─────────────────────────────────────────────────────
+<BacktestPanel
+  candles={candles}
+  ma1Period={state.ma1Period}
+  ma2Period={state.ma2Period}
+  ma3Period={state.ma3Period}
+  symbol={state.symbol}
+  lang={state.lang}
+/>
+```
+
+**Edit 5b** — where `detectSignal` is called. Find the line that calls it (it uses `ma1Period`, `ma2Period`):
+
+```typescript
+// ── FIND ────────────────────────────────────────────────────────
+  const signal = detectSignal(candles, state.ma1Period, state.ma2Period, ...);
+```
+
+**Replace with:**
+
+```typescript
+// ── REPLACE ─────────────────────────────────────────────────────
+  const signal = detectSignal(candles, state.ma1Period, state.ma2Period, state.ma3Period);
+```
+
+***
+
+## S2 Completion Checklist
+
+Before marking S2 done and moving to S3:
+
+- [ ] `npx tsc --noEmit` — **zero errors**
+- [ ] `BacktestTrade` has `sl`, `tp`, `exitReason: 'TP' | 'SL' | 'TRAIL' | 'END'`
+- [ ] `BacktestResult` has `rangeFiltered`, `avgSlDist`, `avgTpDist`
+- [ ] `useAppState` exports `ma3Period` in both `AppState` and `AppActions`
+- [ ] `backtest.ts` no longer has `slPct` or `tpPct` parameters
+- [ ] `BacktestPanel` Props has `ma3Period` and the SL%/TP% inputs are gone
+- [ ] Run the backtest in the browser — confirm it doesn't crash and the "Range Filtered" stat box appears
+- [ ] Check `App.tsx` compiles — no `ma3Period` missing prop TypeScript errors
