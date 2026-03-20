@@ -168,6 +168,23 @@ export const t = {
   btSL:            { ZH: '🛑 止蝕',                         EN: '🛑 Stop Loss' },
   btIncomplete:    { ZH: '⏹ 尚未完成',                     EN: '⏹ Incomplete' },
   btNoSignal:      { ZH: '⚠️ 現有K線未測到符合K均條件的訊號，試調整MA期數或切換到較長時間框。', EN: '⚠️ No signals detected in current candles. Try adjusting MA periods or switching to a longer timeframe.' },
+
+  // ── KMA v2 new keys ──────────────────────────────────────────────────────
+  ma5Label:        { ZH: 'MA5 快線',                           EN: 'MA5 Fast' },
+  ma30Label:       { ZH: 'MA30 趨勢錨',                        EN: 'MA30 Anchor' },
+  ma150Label:      { ZH: 'MA150 宏觀線',                       EN: 'MA150 Macro' },
+  pivotBreached:   { ZH: '拐點突破位',                          EN: 'Pivot Breached' },
+  trendLabel:      { ZH: '趨勢格局',                            EN: 'Trend' },
+  trendBull:       { ZH: '🐂 多頭',                             EN: '🐂 BULL' },
+  trendBear:       { ZH: '🐻 空頭',                             EN: '🐻 BEAR' },
+  trendRange:      { ZH: '〰 橫盤',                             EN: '〰 RANGE' },
+  rangeMode:       { ZH: '⚠️ 橫盤格局 — 三線未對齊，暫停訊號', EN: '⚠️ Range mode — MA stack not aligned, signals paused' },
+  dynamicSL:       { ZH: '結構式止蝕',                          EN: 'Structure SL' },
+  dynamicTP:       { ZH: '結構式止盈',                          EN: 'Structure TP' },
+  rrRatio25:       { ZH: '盈虧比 2.5:1',                        EN: 'R:R 2.5:1' },
+  swingHH:         { ZH: '更高高點 HH',                         EN: 'Higher High (HH)' },
+  swingLL:         { ZH: '更低低點 LL',                         EN: 'Lower Low (LL)' },
+  kmaV2Badge:      { ZH: '⚡ K均 v2',                           EN: '⚡ KMA v2' },
 };
 
 export type TKey = keyof typeof t;

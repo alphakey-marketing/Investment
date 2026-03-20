@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { PaperAccount } from '../types/mode';
-import { SignalEvent } from '../types/binance';
+import { KMASignalEvent } from '../types/binance';
 import { HKTicker, CONTRACT_SPECS, ContractSpec } from '../types/hkmarket';
 import { Lang, tr } from '../i18n';
 
 interface Props {
   account:  PaperAccount;
-  signal:   SignalEvent | null;
+  signal:   KMASignalEvent | null;
   lastPrice: number | null;
   symbol:   string;
   pnl:      number;
@@ -67,9 +67,8 @@ export default function PaperTradingPanel({
 
   const handleOpenBySignal = () => {
     if (!signal) return;
-    const sigSL = signal.type === 'LONG' ? signal.price * (1 - slPct) : signal.price * (1 + slPct);
-    const sigTP = signal.type === 'LONG' ? signal.price * (1 + tpPct) : signal.price * (1 - tpPct);
-    onOpen(symbol, signal.type, signal.price, capitalForOpen, sigSL, sigTP);
+    // Use structure-based SL/TP from KMASignalEvent (v2) — not fixed fractions
+    onOpen(symbol, signal.type, signal.price, capitalForOpen, signal.sl, signal.tp);
   };
 
   const handleOpenManual = () => {
@@ -171,7 +170,14 @@ export default function PaperTradingPanel({
       {!pos ? (
         <div style={styles.form}>
           <div style={styles.formTitle}>{tr('openPos', lang)}</div>
-          {signal && <div style={styles.signalHint}>🚦 {tr('signalHint', lang)}</div>}
+          {signal && (
+            <div style={styles.signalHint}>
+              🚦 {tr('signalHint', lang)}
+              <span style={{ marginLeft: 8, color: '#888', fontSize: '0.72rem', fontFamily: 'monospace' }}>
+                SL={signal.sl.toFixed(3)} · TP={signal.tp.toFixed(3)} · {signal.trend === 'BULL' ? '🐂 BULL' : signal.trend === 'BEAR' ? '🐻 BEAR' : '〰 RANGE'}
+              </span>
+            </div>
+          )}
           <div style={styles.grid}>
             <Field label={tr('direction', lang)}>
               <div style={{ display: 'flex', gap: 6 }}>
@@ -265,11 +271,11 @@ export default function PaperTradingPanel({
               value={isFutures ? `${pos.entryPrice.toFixed(0)} pts` : `HK$${pos.entryPrice.toFixed(2)}`} />
             <PosItem label={isFutures ? (isEN ? 'Current Level' : '當前點位') : tr('currentPrice', lang)}
               value={lastPrice != null ? (isFutures ? `${lastPrice.toFixed(0)} pts` : `HK$${lastPrice.toFixed(2)}`) : '---'} />
-            <PosItem label={tr('stopLoss', lang)}
-              value={isFutures ? `${pos.stopLoss.toFixed(0)} pts` : `HK$${pos.stopLoss.toFixed(2)}`}
+            <PosItem label={`${tr('stopLoss', lang)} ${tr('dynamicSL', lang)}`}
+              value={isFutures ? `${pos.stopLoss.toFixed(0)} pts` : `HK$${pos.stopLoss.toFixed(3)}`}
               color="#ff174488" />
-            <PosItem label={tr('takeProfit', lang)}
-              value={isFutures ? `${pos.takeProfit.toFixed(0)} pts` : `HK$${pos.takeProfit.toFixed(2)}`}
+            <PosItem label={`${tr('takeProfit', lang)} ${tr('dynamicTP', lang)}`}
+              value={isFutures ? `${pos.takeProfit.toFixed(0)} pts` : `HK$${pos.takeProfit.toFixed(3)}`}
               color="#00c85388" />
             <PosItem
               label={isFutures ? (isEN ? 'Contracts' : '合約數') : (isEN ? 'Shares' : '股數')}
