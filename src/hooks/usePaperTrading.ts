@@ -9,7 +9,7 @@
 import { useState, useMemo } from 'react';
 import { PaperAccount, OpenPosition } from '../types/mode';
 import { TradeRecord } from '../types/trade';
-import { FutuSymbol, CONTRACT_SPECS } from '../types/futu';
+import { HKTicker, CONTRACT_SPECS } from '../types/hkmarket';
 
 const STORAGE_KEY = 'paper_account_v2';
 
@@ -38,16 +38,14 @@ export function usePaperTrading(addTrade: (t: Omit<TradeRecord, 'id'>) => void) 
     sl: number,
     tp: number
   ) => {
-    if (account.openPosition) return;     // one position at a time
+    if (account.openPosition) return;
     if (capital > account.balance) return;
 
-    const spec   = CONTRACT_SPECS[symbol as FutuSymbol];
+    const spec   = CONTRACT_SPECS[symbol as HKTicker];
     const isFut  = spec?.isFutures ?? false;
     const mult   = spec?.multiplier ?? 1;
     const margin = spec?.marginEstHKD ?? 0;
 
-    // For futures: quantity = number of contracts (already chosen by UI via capitalForOpen)
-    // For stocks:  quantity = capital / price
     const quantity = isFut
       ? (margin > 0 ? Math.max(1, Math.floor(capital / margin)) : 1)
       : (price > 0 ? capital / price : 0);
@@ -64,11 +62,9 @@ export function usePaperTrading(addTrade: (t: Omit<TradeRecord, 'id'>) => void) 
     const pos = account.openPosition;
     if (!pos) return;
 
-    const spec = CONTRACT_SPECS[pos.symbol as FutuSymbol];
+    const spec = CONTRACT_SPECS[pos.symbol as HKTicker];
     const mult = spec?.multiplier ?? 1;
 
-    // Futures: P&L = point difference × HKD-per-point × contracts
-    // Stocks:  P&L = price difference × shares  (multiplier = 1)
     const pnl = pos.type === 'LONG'
       ? (exitPrice - pos.entryPrice) * mult * pos.quantity
       : (pos.entryPrice - exitPrice) * mult * pos.quantity;
@@ -104,7 +100,6 @@ export function usePaperTrading(addTrade: (t: Omit<TradeRecord, 'id'>) => void) 
 
   const pnl    = parseFloat((account.balance - account.initialBalance).toFixed(2));
   const pnlPct = parseFloat(((pnl / account.initialBalance) * 100).toFixed(2));
-  // openPnl is computed in PaperTradingPanel directly (needs lastPrice)
   const openPnl = useMemo(() => null, []);
 
   return { account, openPosition, closePosition, resetAccount, pnl, pnlPct, openPnl };

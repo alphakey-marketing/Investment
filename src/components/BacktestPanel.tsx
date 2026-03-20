@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Candle } from '../types/binance';
 import { BacktestResult } from '../types/mode';
-import { FutuSymbol, CONTRACT_SPECS } from '../types/futu';
+import { HKTicker, CONTRACT_SPECS } from '../types/hkmarket';
 import { runBacktest } from '../utils/backtest';
 import { Lang, tr } from '../i18n';
 
@@ -22,7 +22,7 @@ function fmtTime(unix: number) {
   });
 }
 
-// ── Interpretation helper ─────────────────────────────────────────────────────
+// ── Interpretation helper ──────────────────────────────────────────────────────────────────────────
 function getInterpretation(
   result: BacktestResult,
   rr: number,
@@ -59,7 +59,7 @@ function getInterpretation(
     lines.push({ icon: '❌', color: '#ff9800',
       text: isEN
         ? `Win rate ${winRate}% is BELOW break-even of ${breakEvenWinRate}% (after commission). Review SL/TP or increase R:R.`
-        : `勝率 ${winRate}% 低於保本線 ${breakEvenWinRate}%（扣除會費後）。建議調整止蝕⼀止盈或提高風報比。`,
+        : `勝率 ${winRate}% 低於保本線 ${breakEvenWinRate}%（扣除會費後）。建議調整止蚁一止盈或提高風報比。`,
     });
   }
 
@@ -79,11 +79,10 @@ function getInterpretation(
     lines.push({ icon: '❌', color: '#ff1744',
       text: isEN
         ? `Profit Factor ${profitFactor} is below 1.0 after commission — losing strategy. Adjust parameters or increase contracts to offset commission drag.`
-        : `盈利因子 ${profitFactor} 扣會費後低於 1.0 — 整體虧損。建議調整參數或增加合約數以分播會費。`,
+        : `盈利因子 ${profitFactor} 扣會費後低於 1.0 — 整體五損。建議調整參數或増加合約數以分播會費。`,
     });
   }
 
-  // Commission drag warning
   if (totalCommission > 0 && totalSignals > 0) {
     const commPctOfGross = totalPnl + totalCommission > 0
       ? parseFloat(((totalCommission / (Math.abs(totalPnl) + totalCommission)) * 100).toFixed(1))
@@ -103,7 +102,6 @@ function getInterpretation(
     });
   }
 
-  // Use actual multiplier to compute break-even points (fixed from hard-coded 10)
   const breakEvenPts = multiplier > 0 ? Math.ceil(commPerRound / multiplier) : commPerRound;
   lines.push({ icon: '💡', color: '#29b6f6',
     text: isEN
@@ -115,7 +113,7 @@ function getInterpretation(
 }
 
 export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, lang }: Props) {
-  const spec       = CONTRACT_SPECS[symbol as FutuSymbol];
+  const spec       = CONTRACT_SPECS[symbol as HKTicker];
   const isFutures  = spec?.isFutures ?? false;
   const multiplier = spec?.multiplier ?? 1;
 
@@ -127,8 +125,8 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
   const [result,         setResult]         = useState<BacktestResult | null>(null);
   const isEN = lang === 'EN';
 
-  const rrRatio    = parseFloat(tpPct)  / parseFloat(slPct)  || 3;
-  const contracts  = Math.max(1, parseInt(contractsInput) || 1);
+  const rrRatio      = parseFloat(tpPct)  / parseFloat(slPct)  || 3;
+  const contracts    = Math.max(1, parseInt(contractsInput) || 1);
   const commPerRound = Math.max(0, parseFloat(commInput) || 0);
 
   const marginPerContract = spec?.marginEstHKD ?? 0;
@@ -157,7 +155,6 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
     }, []);
   }, [result]);
 
-  // Pass multiplier into getInterpretation so break-even pts tip is correct for all contracts
   const interp = result ? getInterpretation(result, rrRatio, commPerRound, multiplier, lang) : null;
 
   const sampleEntry = candles[candles.length - 1]?.close ?? 20000;
@@ -168,9 +165,7 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
 
   return (
     <div style={styles.wrapper}>
-      {/* UAT fix: was {'\u2018\ud83d\udd0d \u56de\u6b78\u6e2c\u8a66\u2019} with curly quotes — parse error */}
       <div style={styles.title}>{tr('backtestTitle', lang)}</div>
-
       <div style={styles.desc}>
         {tr('backtestDesc1', lang)} {candles.length} {tr('backtestDesc2', lang)}
       </div>
@@ -179,7 +174,7 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
         <div style={styles.futuresNote}>
           {isEN
             ? `📐 Futures mode — P&L = pts × HK$${multiplier}/pt × contracts. Session filter active (no dead-zone signals). Commission deducted.`
-            : `📐 期貨模式 — 盈虧 = 點數 × HK$${multiplier}/點 × 合約數。已套用交易時段過濾，會費已扣除。`}
+            : `📐 期貨模式 — 盈兹 = 點數 × HK$${multiplier}/點 × 合約數。已套用交易時段過濾，會費已扣除。`}
         </div>
       )}
 
@@ -189,8 +184,8 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
               ? `1 contract, SL=${slPct}% (≈${slPts}pts = -${fmtHKD(slHKD)}), TP=${tpPct}% (≈${tpPts}pts = +${fmtHKD(tpHKD)}), commission ${fmtHKD(commPerRound)}/round`
               : '1% SL, 3% TP (3:1 R:R)'}. Click Run Backtest.`
           : `💡 預設：${isFutures
-              ? `1張合約，止蝕=${slPct}%（約${slPts}點=-${fmtHKD(slHKD)}），止盈=${tpPct}%（約${tpPts}點=+${fmtHKD(tpHKD)}），會費${fmtHKD(commPerRound)}/回`
-              : '1%止蝕、3%止盈（3:1風報比）'}。直接點擊執行。`}
+              ? `1張合約，止蚁=${slPct}%（約${slPts}點=-${fmtHKD(slHKD)}），止盈=${tpPct}%（約${tpPts}點=+${fmtHKD(tpHKD)}），會費${fmtHKD(commPerRound)}/回`
+              : '1%止蚁、3%止盈（3:1風報比）'}. 直接點擊執行。`}
       </div>
 
       <div style={styles.grid}>
@@ -209,7 +204,7 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
         </Field>
 
         <Field
-          label={isEN ? 'Stop Loss %' : '止蝕 %'}
+          label={isEN ? 'Stop Loss %' : '止蚁 %'}
           hint={isEN ? `≈ ${slPts} pts = -${fmtHKD(slHKD)} per trade` : `約 ${slPts} 點 = -${fmtHKD(slHKD)}/筆`}
         >
           <input style={styles.input} type="number" value={slPct} onChange={(e) => setSlPct(e.target.value)} />
@@ -225,8 +220,8 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
         <Field
           label={isEN ? 'Commission HKD/round' : '會費 HKD/回'}
           hint={isEN
-            ? `Entry + exit fees. MHI ≈ HK$80, HSI/HHI ≈ HK$120. Deducted from each trade P&L.`
-            : `開倉+平倉會費。MHI ≈ HK$80，HSI/HHI ≈ HK$120。從每筆P&L扣除。`}
+            ? `Entry + exit fees. ETF ≈ HK$60–80/round. Deducted from each trade P&L.`
+            : `開倉+平倉會費。ETF 約 HK$60–80/回。從每筆P&L扣除。`}
         >
           <input style={styles.input} type="number" min="0" value={commInput}
             onChange={(e) => setCommInput(e.target.value)} />
@@ -266,8 +261,8 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
                 <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: interp.verdictColor }}>
                   {isEN
                     ? interp.isProfitable && interp.isViable
-                      ? "Strategy profitable after commission \u2014 here's what the numbers mean:"
-                      : "Results need attention \u2014 here's what the numbers mean:"
+                      ? "Strategy profitable after commission — here's what the numbers mean:"
+                      : "Results need attention — here's what the numbers mean:"
                     : interp.isProfitable && interp.isViable
                       ? '扣除會費後策略仍獲利 — 以下是數字的含義：'
                       : '結果需要留意 — 以下是數字的含義：'}
@@ -283,8 +278,8 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
               </div>
               <div style={styles.interpFooter}>
                 {isEN
-                  ? '⚠️ Past performance does not guarantee future results. Always use stop loss. Commission rates vary — check Futu for latest fees.'
-                  : '⚠️ 過去表現不代表未來結果。每次交易必須設置止蝕。會費以富途最新公告為準。'}
+                  ? '⚠️ Past performance does not guarantee future results. Always use stop loss. Commission rates vary — check with your broker for latest fees.'
+                  : '⚠️ 過去表現不代表未來結果。每次交易必須設置止蚁。會費以登記訿商最新公告為準。'}
               </div>
             </div>
           )}
