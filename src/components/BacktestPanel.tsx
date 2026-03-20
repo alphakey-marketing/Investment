@@ -9,6 +9,7 @@ interface Props {
   candles:   Candle[];
   ma1Period: number;
   ma2Period: number;
+  ma3Period: number;   // NEW — MA150 for triple stack
   symbol:    string;
   lang:      Lang;
 }
@@ -112,20 +113,17 @@ function getInterpretation(
   return { verdictIcon, verdictColor, isProfitable, isViable, lines };
 }
 
-export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, lang }: Props) {
+export default function BacktestPanel({ candles, ma1Period, ma2Period, ma3Period, symbol, lang }: Props) {
   const spec       = CONTRACT_SPECS[symbol as HKTicker];
   const isFutures  = spec?.isFutures ?? false;
   const multiplier = spec?.multiplier ?? 1;
 
   const [contractsInput, setContractsInput] = useState('1');
-  const [slPct,          setSlPct]          = useState(isFutures ? '0.5' : '1');
-  const [tpPct,          setTpPct]          = useState(isFutures ? '1.5' : '3');
   const [commInput,      setCommInput]      = useState(multiplier >= 50 ? '120' : '80');
   const [ran,            setRan]            = useState(false);
   const [result,         setResult]         = useState<BacktestResult | null>(null);
   const isEN = lang === 'EN';
 
-  const rrRatio      = parseFloat(tpPct)  / parseFloat(slPct)  || 3;
   const contracts    = Math.max(1, parseInt(contractsInput) || 1);
   const commPerRound = Math.max(0, parseFloat(commInput) || 0);
 
@@ -133,15 +131,19 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
   const totalMargin       = contracts * marginPerContract;
 
   const handleRun = () => {
-    if (candles.length < Math.max(ma1Period, ma2Period) + 10) return;
+    // v2: needs slowPeriod (MA150) + swing warmup — minimum ~169 bars
+    if (candles.length < ma3Period + 20) return;
     const r = runBacktest(
-      candles, ma1Period, ma2Period,
-      contracts,
-      parseFloat(slPct) / 100 || 0.005,
-      parseFloat(tpPct) / 100 || 0.015,
-      0.005,
+      candles,
+      ma1Period,    // MA5
+      ma2Period,    // MA30
+      ma3Period,    // MA150
+      contracts,    // shares
+      2.5,          // tpRatio — SL × 2.5, fixed by book rules
+      0.008,        // proximityPct — 0.8% from MA30
       commPerRound,
-      false
+      2,            // swingLookback
+      false         // no evening for ETF
     );
     setResult(r); setRan(true);
   };
@@ -155,13 +157,8 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
     }, []);
   }, [result]);
 
+  const rrRatio = 2.5;  // Fixed by v2 book rules
   const interp = result ? getInterpretation(result, rrRatio, commPerRound, multiplier, lang) : null;
-
-  const sampleEntry = candles[candles.length - 1]?.close ?? 20000;
-  const slPts = Math.round(sampleEntry * (parseFloat(slPct) / 100));
-  const tpPts = Math.round(sampleEntry * (parseFloat(tpPct) / 100));
-  const slHKD = slPts * multiplier * contracts;
-  const tpHKD = tpPts * multiplier * contracts;
 
   return (
     <div style={styles.wrapper}>
@@ -180,12 +177,8 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
 
       <div style={styles.inputHint}>
         {isEN
-          ? `💡 Defaults: ${isFutures
-              ? `1 contract, SL=${slPct}% (≈${slPts}pts = -${fmtHKD(slHKD)}), TP=${tpPct}% (≈${tpPts}pts = +${fmtHKD(tpHKD)}), commission ${fmtHKD(commPerRound)}/round`
-              : '1% SL, 3% TP (3:1 R:R)'}. Click Run Backtest.`
-          : `💡 預設：${isFutures
-              ? `1張合約，止蚁=${slPct}%（約${slPts}點=-${fmtHKD(slHKD)}），止盈=${tpPct}%（約${tpPts}點=+${fmtHKD(tpHKD)}），會費${fmtHKD(commPerRound)}/回`
-              : '1%止蚁、3%止盈（3:1風報比）'}. 直接點擊執行。`}
+          ? `💡 v2 Settings: Dynamic SL/TP (structure-based). 2.5:1 R:R. Commission ${fmtHKD(commPerRound)}/round. Click Run Backtest.`
+          : `💡 v2 設置：結構止損/止盈（動態）。風報比 2.5:1。會費 ${fmtHKD(commPerRound)}/回。直接點擊執行。`}
       </div>
 
       <div style={styles.grid}>
@@ -204,17 +197,18 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
         </Field>
 
         <Field
-          label={isEN ? 'Stop Loss %' : '止蚁 %'}
-          hint={isEN ? `≈ ${slPts} pts = -${fmtHKD(slHKD)} per trade` : `約 ${slPts} 點 = -${fmtHKD(slHKD)}/筆`}
+          label={isEN ? 'SL / TP Mode' : '止損/止盈模式'}
+          hint={isEN
+            ? 'v2: Structure-based. SL = prev swing LOW/HIGH. TP = SL × 2.5 (RR 2.5:1). Fixed by book rules.'
+            : 'v2：結構止損。SL = 前擺動低/高點，TP = SL × 2.5（風報比2.5:1）。按書本規則固定。'}
         >
-          <input style={styles.input} type="number" value={slPct} onChange={(e) => setSlPct(e.target.value)} />
-        </Field>
-
-        <Field
-          label={isEN ? `Take Profit % (R:R=${rrRatio.toFixed(1)}:1)` : `止盈 %（風報比=${rrRatio.toFixed(1)}:1）`}
-          hint={isEN ? `≈ ${tpPts} pts = +${fmtHKD(tpHKD)} per trade` : `約 ${tpPts} 點 = +${fmtHKD(tpHKD)}/筆`}
-        >
-          <input style={styles.input} type="number" value={tpPct} onChange={(e) => setTpPct(e.target.value)} />
+          <div style={{
+            background: '#0f0f1a', border: '1px solid #2a2a3e',
+            color: '#f0b90b', padding: '6px 10px', borderRadius: 6,
+            fontFamily: 'monospace', fontSize: '0.78rem',
+          }}>
+            {isEN ? '⚡ Dynamic (K均 v2)' : '⚡ 動態結構止損 (K均 v2)'}
+          </div>
         </Field>
 
         <Field
@@ -251,6 +245,22 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
               tooltip={isEN
                 ? `${result.totalSignals} trades × HK$${commPerRound}/round = ${fmtHKD(result.totalCommission)} in fees`
                 : `${result.totalSignals} 筆 × HK$${commPerRound}/回 = ${fmtHKD(result.totalCommission)} 會費`}
+            />
+            <SBox
+              label={isEN ? 'Range Filtered' : '盤整過濾'}
+              value={result.rangeFiltered.toString()}
+              color="#f0b90b"
+              tooltip={isEN
+                ? `${result.rangeFiltered} entry-eligible candles skipped because MA5/MA30/MA150 were not cleanly aligned (RANGE state). This is the K均 RANGE kill-switch working correctly.`
+                : `${result.rangeFiltered} 根符合條件的K線因MA5/MA30/MA150排列混亂（盤整狀態）而被過濾。這是K均均線排列過濾器正常運作。`}
+            />
+            <SBox
+              label={isEN ? 'Avg SL Dist' : '平均止損距離'}
+              value={result.avgSlDist > 0 ? result.avgSlDist.toFixed(3) : '—'}
+              color="#888"
+              tooltip={isEN
+                ? `Average structure-based SL distance (price points). Based on previous swing point, not a fixed %. Avg TP = ${result.avgTpDist.toFixed(3)} pts.`
+                : `平均結構止損距離（價格點數），基於前一個擺動低/高點，非固定百分比。平均止盈 = ${result.avgTpDist.toFixed(3)} 點。`}
             />
           </div>
 

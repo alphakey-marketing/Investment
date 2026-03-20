@@ -10,7 +10,7 @@ import type { AppMode } from '../types/mode';
 import type { Lang } from '../i18n';
 import {
   DEFAULT_MODE, DEFAULT_LANG, DEFAULT_SYMBOL, DEFAULT_INTERVAL,
-  DEFAULT_MA1_PERIOD, DEFAULT_MA2_PERIOD,
+  DEFAULT_MA1_PERIOD, DEFAULT_MA2_PERIOD, DEFAULT_MA3_PERIOD,
   LS_ONBOARD_DISMISSED, LS_ROADMAP_DISMISSED,
   STALE_CHECK_INTERVAL_MS,
 } from '../constants';
@@ -21,8 +21,9 @@ export interface AppState {
   lang:          Lang;
   symbol:        HKTicker;    // Yahoo Finance ticker format e.g. '3081.HK'
   klineInterval: HKInterval;
-  ma1Period:     number;
-  ma2Period:     number;
+  ma1Period:     number;   // MA5  — fast line
+  ma2Period:     number;   // MA30 — trend anchor
+  ma3Period:     number;   // MA150 — macro filter (v2)
 
   // ── UI flags ───────────────────────────────────────────────────────────────
   showOnboard: boolean;
@@ -39,6 +40,7 @@ export interface AppActions {
   setKlineInterval: (i: HKInterval) => void;
   setMa1Period:     (p: number) => void;
   setMa2Period:     (p: number) => void;
+  setMa3Period:     (p: number) => void;  // v2
   dismissOnboard:   () => void;
   dismissRoadmap:   () => void;
   showRoadmapAgain: () => void;
@@ -51,6 +53,7 @@ export function useAppState(): [AppState, AppActions] {
   const [klineInterval, setKlineInterval] = useState<HKInterval>(DEFAULT_INTERVAL);
   const [ma1Period,     setMa1Period]     = useState(DEFAULT_MA1_PERIOD);
   const [ma2Period,     setMa2Period]     = useState(DEFAULT_MA2_PERIOD);
+  const [ma3Period,     setMa3Period]     = useState(DEFAULT_MA3_PERIOD);  // v2
   const [showOnboard,   setShowOnboard]   = useState(() => !localStorage.getItem(LS_ONBOARD_DISMISSED));
   const [showRoadmap,   setShowRoadmap]   = useState(() => !localStorage.getItem(LS_ROADMAP_DISMISSED));
   const [now,           setNow]           = useState(() => Date.now());
@@ -76,12 +79,13 @@ export function useAppState(): [AppState, AppActions] {
   };
 
   const state: AppState = {
-    mode, lang, symbol, klineInterval, ma1Period, ma2Period,
+    mode, lang, symbol, klineInterval, ma1Period, ma2Period, ma3Period,
     showOnboard, showRoadmap, now,
   };
 
   const actions: AppActions = {
-    setMode, setLang, setSymbol, setKlineInterval, setMa1Period, setMa2Period,
+    setMode, setLang, setSymbol, setKlineInterval,
+    setMa1Period, setMa2Period, setMa3Period,
     dismissOnboard, dismissRoadmap, showRoadmapAgain,
   };
 

@@ -122,8 +122,8 @@ function ChartSourceBadge({ source, lang }: { source: 'yahoo' | null; lang: Lang
 // ─── Main App ───────────────────────────────────────────────────────────────────────────────────────────────────
 export default function App() {
   const [state, actions] = useAppState();
-  const { mode, lang, symbol, klineInterval, ma1Period, ma2Period, showOnboard, showRoadmap, now } = state;
-  const { setMode, setLang, setSymbol, setKlineInterval, setMa1Period, setMa2Period, dismissOnboard, dismissRoadmap, showRoadmapAgain } = actions;
+  const { mode, lang, symbol, klineInterval, ma1Period, ma2Period, ma3Period, showOnboard, showRoadmap, now } = state;
+  const { setMode, setLang, setSymbol, setKlineInterval, setMa1Period, setMa2Period, setMa3Period, dismissOnboard, dismissRoadmap, showRoadmapAgain } = actions;
 
   const { candles, loading, error, lastPrice, dataSource, lastUpdated } =
     useYahooKlines(klineInterval, 200, symbol);
@@ -382,7 +382,7 @@ export default function App() {
 
       {mode === 'BACKTEST' && (
         <ErrorBoundary fallback="Backtest failed">
-          <BacktestPanel candles={candles} ma1Period={ma1Period} ma2Period={ma2Period} symbol={symbol} lang={lang} />
+          <BacktestPanel candles={candles} ma1Period={ma1Period} ma2Period={ma2Period} ma3Period={ma3Period} symbol={symbol} lang={lang} />
         </ErrorBoundary>
       )}
 

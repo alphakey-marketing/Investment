@@ -27,7 +27,10 @@ export interface BacktestResult {
   maxDrawdown:     number;  // net of commission
   profitFactor:    number;  // net of commission
   trades:          BacktestTrade[];
-  totalCommission: number;  // Fix 5: total commission paid across all trades
+  totalCommission: number;
+  rangeFiltered:   number;  // candles skipped because MA stack was RANGE
+  avgSlDist:       number;  // average SL distance in price points (structure-based)
+  avgTpDist:       number;  // average TP distance in price points
 }
 
 export interface BacktestTrade {
@@ -38,5 +41,7 @@ export interface BacktestTrade {
   exitPrice:  number;
   pnl:        number;        // net of commission
   pnlPct:     number;
-  exitReason: 'TP' | 'SL' | 'END';
+  exitReason: 'TP' | 'SL' | 'TRAIL' | 'END';  // TRAIL = MA30 trailing exit
+  sl:         number;   // the actual SL price used for this trade
+  tp:         number;   // the actual TP price used for this trade
 }
