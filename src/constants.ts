@@ -18,7 +18,6 @@ export const STALE_CHECK_INTERVAL_MS = 5_000;
 // ── Default chart / MA settings ───────────────────────────────────
 export const DEFAULT_SYMBOL: HKTicker     = '3081.HK';  // Value Gold ETF
 export const DEFAULT_INTERVAL: HKInterval = '1h';        // 1h suits ETF swing trading
-// ── REPLACE with these lines ─────────────────────────────────────
 export const DEFAULT_MA1_PERIOD           = 5;    // MA5  — fast line, tracks price
 export const DEFAULT_MA2_PERIOD           = 30;   // MA30 — trend anchor / dynamic S/R
 export const DEFAULT_MA3_PERIOD           = 150;  // MA150 — macro trend filter (NEW)
@@ -38,9 +37,6 @@ export const LS_TRADE_JOURNAL      = 'kma_trade_journal';
 export const SIGNAL_TOAST_DURATION_MS = 12_000;
 
 // ── Stop-loss / take-profit defaults ──────────────────────────────
-// ── REPLACE with these lines ─────────────────────────────────────
 // NOTE: SL and TP are now DYNAMIC in signal.ts v2 (structure-based from swing points).
-// These fractions are kept ONLY as fallback display values for PositionCalculator
-// and PaperTradingPanel when no live signal is present.
-export const DEFAULT_SL_FRACTION = 0.015;  // 1.5% fallback display only
-export const DEFAULT_TP_FRACTION = 0.0375; // 2.5× SL fallback display only
+// DEFAULT_SL_FRACTION and DEFAULT_TP_FRACTION removed in KMA v2.
+// SL/TP are now computed dynamically from swing structure in signal.ts.

@@ -165,7 +165,19 @@ export default function App() {
     });
     if (Notification.permission === 'granted')
       new Notification(`KMA ${signal.type} — ${symbolLabel}`, { body: signal.message });
-    sendMessage(signal.message);
+    const tgMsg = [
+      `${isLong ? '🟢' : '🔴'} <b>KMA v2 ${signal.type} Entry Signal</b>`,
+      `📊 <b>Asset:</b> ${symbolLabel}`,
+      `💰 <b>Price:</b> HK$${signal.price.toFixed(3)}`,
+      `🛑 <b>S/L:</b> HK$${signal.sl.toFixed(3)}`,
+      `🎯 <b>T/P:</b> HK$${signal.tp.toFixed(3)}`,
+      `🧭 <b>Trend:</b> ${signal.trend === 'BULL' ? '🐂 BULL' : '🐻 BEAR'}`,
+      `📐 <b>Pivot:</b> HK$${signal.swingBreached.toFixed(3)}`,
+      `📊 <b>MA${ma1Period}/${ma2Period}/${ma3Period}:</b> ${signal.ma5.toFixed(3)} / ${signal.ma30.toFixed(3)} / ${signal.ma150.toFixed(3)}`,
+      `⏰ ${new Date(signal.time * 1000).toLocaleString('en-HK')}`,
+      `<i>⚠️ For reference only. Not financial advice.</i>`,
+    ].join('\n');
+    sendMessage(tgMsg);
     sendEmail({
       subject: `${isLong ? '🟢 LONG' : '🔴 SHORT'} Signal — ${symbolLabel} @ HK$${signal.price.toFixed(3)}`,
       signal_type: isLong ? '🟢 LONG' : '🔴 SHORT',
@@ -247,7 +259,10 @@ export default function App() {
         <div>
           <h1 style={{ ...styles.header, color: modeColor }}>{tr('appTitle', lang)}</h1>
           <div style={styles.subHeader}>
-            {symbolLabel} · {klineInterval.toUpperCase()} · MA{ma1Period}/MA{ma2Period}
+            {symbolLabel} · {klineInterval.toUpperCase()} · MA{ma1Period}/MA{ma2Period}/MA{ma3Period}
+            <span style={{ marginLeft: 6, fontSize: '0.65rem', color: '#ab47bc', background: '#ab47bc18', border: '1px solid #ab47bc44', borderRadius: 4, padding: '1px 5px' }}>
+              {isEN ? '⚡ KMA v2' : '⚡ K均 v2'}
+            </span>
             {signal && (
               <span style={{ marginLeft: 8, color: signal.type === 'LONG' ? '#00c853' : '#ff1744', fontSize: '0.7rem' }}>
                 ● {isEN ? 'Signal Active' : '有訊號'}
