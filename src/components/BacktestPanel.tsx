@@ -136,12 +136,12 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, symbol, l
     if (candles.length < Math.max(ma1Period, ma2Period) + 10) return;
     const r = runBacktest(
       candles, ma1Period, ma2Period,
-      contracts, multiplier,
+      contracts,
       parseFloat(slPct) / 100 || 0.005,
       parseFloat(tpPct) / 100 || 0.015,
       0.005,
       commPerRound,
-      true,
+      false
     );
     setResult(r); setRan(true);
   };
