@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { PaperAccount } from '../types/mode';
 import { SignalEvent } from '../types/binance';
-import { FutuSymbol, CONTRACT_SPECS, ContractSpec } from '../types/futu';
+import { HKTicker, CONTRACT_SPECS, ContractSpec } from '../types/hkmarket';
 import { Lang, tr } from '../i18n';
 
 interface Props {
@@ -27,7 +27,7 @@ export default function PaperTradingPanel({
   const [manualSL,       setManualSL]       = useState('');
   const [manualTP,       setManualTP]       = useState('');
   const [closePrice,     setClosePrice]     = useState('');
-  const [resetInput,     setResetInput]     = useState('500000');  // HK$500k default
+  const [resetInput,     setResetInput]     = useState('500000');
   const [confirmReset,   setConfirmReset]   = useState(false);
   const [showHowTo,      setShowHowTo]      = useState(false);
 
@@ -37,7 +37,7 @@ export default function PaperTradingPanel({
   const numContracts = Math.max(1, parseInt(contractsInput) || 1);
 
   // Contract spec
-  const spec: ContractSpec = CONTRACT_SPECS[symbol as FutuSymbol] ?? {
+  const spec: ContractSpec = CONTRACT_SPECS[symbol as HKTicker] ?? {
     multiplier: 1, tickSize: 0.1, currency: 'HKD', marginEstHKD: 0, isFutures: false,
   };
   const isFutures  = spec.isFutures;
@@ -89,7 +89,7 @@ export default function PaperTradingPanel({
         />
         {isFutures && (
           <Item
-            label={isEN ? 'HKD/pt (per contract)' : '每點盈虧(每張)'}
+            label={isEN ? 'HKD/pt (per contract)' : '每點盈关(每張)'}
             value={`HK$${multiplier}`}
             color="#f0b90b"
           />
@@ -118,19 +118,19 @@ export default function PaperTradingPanel({
                 title={isEN ? 'Set how many contracts, then Open by Signal' : '設定合約數量，然後依訊號開倉'}
                 desc={isEN
                   ? `1 MHI contract = HK$${multiplier}/pt. Start with 1 contract. You only need HK$${spec.marginEstHKD.toLocaleString()} margin per contract.`
-                  : `1張小恒指合約 = 每點HK$${multiplier}。從1張開始。每張合約保證金約HK$${spec.marginEstHKD.toLocaleString()}。`}
+                  : `1張小恆指合約 = 每點 HK$${multiplier}。從1張開始。每張合約保證金約 HK$${spec.marginEstHKD.toLocaleString()}。`}
               />
               <HowToStep num="3" color="#00c853"
-                title={isEN ? 'Watch unrealised P&L — close at S/L or T/P' : '觀察浮動盈虧 — 在止蝕或止盈時平倉'}
+                title={isEN ? 'Watch unrealised P&L — close at S/L or T/P' : '觀察浮動盈关 — 在止蚁或止盈時平倉'}
                 desc={isEN
                   ? 'The system warns you when price hits stop loss or take profit. Click Market Close to end the trade.'
-                  : '價格觸及止蝕或止盈時系統會提醒你。點擊「市價平倉」結束交易。'}
+                  : '價格觸及止蚁或止盈時系統會提醒你。點擊「市價平倉」結束交易。'}
               />
             </div>
             {/* MHI example */}
             <div style={styles.exampleBox}>
               <div style={{ fontSize: '0.78rem', color: '#f0b90b', fontWeight: 'bold', marginBottom: 6 }}>
-                {isEN ? '📐 MHI Example:' : '📐 小恒指例子：'}
+                {isEN ? '📐 MHI Example:' : '📐 小恆指例子：'}
               </div>
               <div style={{ fontSize: '0.75rem', color: '#aaa', lineHeight: 1.8, fontFamily: 'monospace' }}>
                 {isEN ? (
@@ -142,7 +142,7 @@ export default function PaperTradingPanel({
                   </>
                 ) : (
                   <>
-                    入場：<b style={{ color: '#fff' }}>20,000點</b> · 止蝕：<b style={{ color: '#ff5252' }}>19,900</b> · 止盈：<b style={{ color: '#69f0ae' }}>20,300</b><br />
+                    入場：<b style={{ color: '#fff' }}>20,000點</b> · 止蚁：<b style={{ color: '#ff5252' }}>19,900</b> · 止盈：<b style={{ color: '#69f0ae' }}>20,300</b><br />
                     風險：<b style={{ color: '#ff5252' }}>100點 × HK$10 = 每張HK$1,000</b><br />
                     回報：<b style={{ color: '#69f0ae' }}>300點 × HK$10 = 每張HK$3,000（3:1風報比）</b><br />
                     保證金：<b style={{ color: '#f0b90b' }}>每張鎖定約HK$22,000</b>
@@ -186,9 +186,8 @@ export default function PaperTradingPanel({
               </div>
             </Field>
 
-            {/* Contracts input (replaces capital input for futures) */}
             <Field label={isFutures
-              ? (isEN ? `Contracts (1 = HK$${multiplier}/pt)` : `合約數 (1張 = 每點HK$${multiplier})`)
+              ? (isEN ? `Contracts (1 = HK$${multiplier}/pt)` : `合約數 (1張 = 每點 HK$${multiplier})`)
               : tr('capitalInput', lang)
             }>
               {isFutures ? (
@@ -198,7 +197,7 @@ export default function PaperTradingPanel({
                   <span style={{ fontSize: '0.65rem', color: '#555', fontFamily: 'monospace' }}>
                     {isEN
                       ? `Margin locked: HK$${(numContracts * spec.marginEstHKD).toLocaleString()} · P&L: HK$${numContracts * multiplier}/pt`
-                      : `鎖定保證金：HK$${(numContracts * spec.marginEstHKD).toLocaleString()} · 每點盈虧：HK$${numContracts * multiplier}`}
+                      : `鎖定保證金：HK$${(numContracts * spec.marginEstHKD).toLocaleString()} · 每點盈关：HK$${numContracts * multiplier}`}
                   </span>
                 </>
               ) : (
@@ -249,7 +248,7 @@ export default function PaperTradingPanel({
           )}
         </div>
       ) : (
-        // ── Open position display ──────────────────────────────────────────
+        // ── Open position display ────────────────────────────────────────────────────────────────────────────
         <div style={styles.form}>
           <div style={styles.formTitle}>
             <span style={{ color: pos.type === 'LONG' ? '#00c853' : '#ff1744' }}>
@@ -353,7 +352,7 @@ export default function PaperTradingPanel({
   );
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// ─── Sub-components ────────────────────────────────────────────────────────────────────────────
 function HowToStep({ num, color, title, desc }: { num: string; color: string; title: string; desc: string }) {
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
