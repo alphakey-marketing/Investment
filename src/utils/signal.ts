@@ -1,58 +1,189 @@
-import { Candle, SignalEvent } from '../types/binance';
-import { getLatestSMA } from './ma';
-import { isHKTradingHours, formatHKT } from './hkSession';
+/**
+ * src/utils/signal.ts — K均交易法 v2
+ *
+ * Replaces the old single-MA proximity + new-high/low detector with a
+ * book-aligned 5-gate entry system:
+ *
+ *   Gate 1 — Session:      HKEX trading hours only (no evening for ETF)
+ *   Gate 2 — MA Stack:     Triple MA must be cleanly BULL or BEAR (not RANGE)
+ *   Gate 3 — Pivot label:  Latest confirmed swing HIGH must be HH (LONG)
+ *                          Latest confirmed swing LOW  must be LL (SHORT)
+ *   Gate 4 — Breakout:     Current close must have broken beyond the pivot
+ *                          (price > lastSwingHigh for LONG,
+ *                           price < lastSwingLow  for SHORT)
+ *   Gate 5 — MA30 proximity: Price must be within 0.8% of MA30, which acts
+ *                             as dynamic support (LONG) or resistance (SHORT)
+ *
+ * SL: structure-based — previous swing LOW for LONG,
+ *                        previous swing HIGH for SHORT.
+ *     Fallback 1.5% if no swing point exists (warm-up only).
+ *
+ * TP: entry ± (SL_distance × 2.5)  →  RR ratio = 2.5 : 1
+ *
+ * Returns KMASignalEvent (extends SignalEvent — fully backward compatible).
+ * All consumers that receive SignalEvent continue to work unchanged.
+ *
+ * DATA REQUIREMENTS:
+ *   Minimum candles = slowPeriod (150) + swingLookback×4 + 5 = ~169 bars.
+ *   Yahoo 1h (60d range) returns ~375 bars → safe margin of ~206 bars.
+ *   DEFAULT_CANDLE_LIMIT must be ≥ 400 (set in constants.ts).
+ */
+
+import { Candle, KMASignalEvent }          from '../types/binance';
+import { findSwingPoints, getLatestSwings } from './swingPoints';
+import { getMATrend, ma30Role }             from './maTrend';
+import { isHKTradingHours, isHKWeekend, formatHKT } from './hkSession';
 
 /**
- * detectSignal — K均 signal detection for HK ETF (03081)
+ * detectSignal — main entry point for live signal detection.
  *
- * Fix 8 — Symmetric MA:
- *   Both LONG and SHORT now use ma20Period (MA20) as the anchor.
- *   Previously SHORT used MA60, causing asymmetric signal frequency.
- *   A SHORT signal fires when price is BELOW MA20 and makes a new low
- *   near MA20 — mirror image of the LONG condition.
+ * Call this once per new candle close with the full candle history.
+ * Returns a KMASignalEvent if all 5 gates pass, otherwise null.
+ *
+ * @param candles      - Full candle array (latest bar is candles[last])
+ * @param fastPeriod   - MA5  period (default 5)
+ * @param midPeriod    - MA30 period (default 30)
+ * @param slowPeriod   - MA150 period (default 150)
+ * @param proximityPct - Max distance from MA30 to qualify entry (default 0.8%)
+ * @param tpRatio      - TP = SL_distance × tpRatio (default 2.5 → RR = 2.5:1)
+ * @param swingLookback - Bars required on each side to confirm a pivot (default 2)
  */
 export function detectSignal(
-  candles: Candle[],
-  ma20Period = 20,
-  ma60Period = 60,   // kept as param for SMA calculation but no longer used as SHORT anchor
-  proximityPct = 0.005
-): SignalEvent | null {
-  if (candles.length < ma60Period + 2) return null;
+  candles:       Candle[],
+  fastPeriod     = 5,
+  midPeriod      = 30,
+  slowPeriod     = 150,
+  proximityPct   = 0.008,
+  tpRatio        = 2.5,
+  swingLookback  = 2,
+): KMASignalEvent | null {
+
+  // ── Pre-check: enough data for MA150 + swing warmup ─────────────────────
+  const minBars = slowPeriod + swingLookback * 4 + 5;
+  if (candles.length < minBars) return null;
 
   const latest = candles[candles.length - 1];
-  const prev   = candles[candles.length - 2];
-  const ma20   = getLatestSMA(candles, ma20Period);
-  const ma60   = getLatestSMA(candles, ma60Period); // still calculated for display in SignalPanel
 
-  if (!ma20 || !ma60) return null;
-
-  // ── HK Session Filter ────────────────────────────────────────────────────
-  // ETF (03081) has no evening session — pass false for includeFuturesEvening
+  // ── Gate 1: HKEX session filter ─────────────────────────────────────────
+  // Pass false → no evening session (ETF 3081.HK has no evening trading)
   if (!isHKTradingHours(latest.time, false)) return null;
+  if (isHKWeekend(latest.time))              return null;
 
-  const price    = latest.close;
-  // Fix 8: both directions anchor to MA20
-  const nearMA20 = Math.abs(price - ma20) / ma20 < proximityPct;
-  const hkt      = formatHKT(latest.time);
+  // ── Gate 2: Triple MA stack must be BULL or BEAR (not RANGE) ────────────
+  const stack = getMATrend(candles, fastPeriod, midPeriod, slowPeriod);
+  if (!stack || stack.trend === 'RANGE') return null;
 
-  if (price > ma20 && latest.high > prev.high && nearMA20) {
+  // ── Swing point detection ────────────────────────────────────────────────
+  // Exclude the last `swingLookback` bars because they have no confirmed
+  // right-side bars yet — using them would give false pivot labels.
+  const confirmedCandles = candles.slice(0, candles.length - swingLookback);
+  const swings = findSwingPoints(confirmedCandles, swingLookback);
+
+  const price = latest.close;
+  const hkt   = formatHKT(latest.time);
+
+  // ════════════════════════════════════════════════════════════════════════
+  // LONG SETUP
+  // ════════════════════════════════════════════════════════════════════════
+  if (stack.trend === 'BULL') {
+
+    // Need at least 2 confirmed swing HIGHs to determine if latest is a HH
+    const recentHighs = getLatestSwings(swings, 'HIGH', 2);
+    // Need at least 1 confirmed swing LOW for the SL anchor
+    const recentLows  = getLatestSwings(swings, 'LOW', 1);
+
+    if (recentHighs.length < 2) return null;
+
+    const [prevHigh, lastHigh] = recentHighs; // [older, newer]
+
+    // Gate 3: The most recent swing HIGH must be a Higher High (HH)
+    // This confirms bullish pivot structure — a lower high (LH) means
+    // the trend may be weakening; we do NOT trade LH in a bull stack.
+    if (lastHigh.price <= prevHigh.price) return null;
+
+    // Gate 4: Current price must have actually broken above the swing HIGH
+    // The signal fires on the BREAKOUT candle, not before.
+    if (price <= lastHigh.price) return null;
+
+    // Gate 5: MA30 must be within 0.8% below current price (support role)
+    // Ensures we're entering NEAR the MA, not after a big runaway move.
+    if (ma30Role(price, stack.ma30, proximityPct) !== 'support') return null;
+
+    // ── Dynamic SL: place at prev confirmed swing LOW ──────────────────────
+    // If no swing low yet (very start of data), fall back to 1.5% below entry.
+    const sl     = recentLows.length > 0
+      ? recentLows[0].price
+      : price * (1 - 0.015);
+    const slDist = price - sl;
+    const tp     = price + slDist * tpRatio;
+
     return {
-      type: 'LONG',
+      // Base SignalEvent fields (backward compatible)
+      type:    'LONG',
       price,
-      ma: ma20,
-      time: latest.time,
-      message: `🟢 LONG訊號! ${price.toFixed(2)} 在MA${ma20Period}(${ma20.toFixed(2)})上方創新高 · ${hkt}`,
+      ma:      stack.ma30,   // 'ma' field expected by legacy consumers
+      time:    latest.time,
+      message:
+        `🟢 K均LONG拐點 | 突破前高 ${lastHigh.price.toFixed(3)} → 入場 ${price.toFixed(3)} ` +
+        `| MA5=${stack.ma5.toFixed(2)} MA30=${stack.ma30.toFixed(2)} MA150=${stack.ma150.toFixed(2)} ` +
+        `| SL=${sl.toFixed(3)} TP=${tp.toFixed(3)} (RR=2.5) | ${hkt}`,
+
+      // KMASignalEvent extra fields
+      sl,
+      tp,
+      ma5:           stack.ma5,
+      ma30:          stack.ma30,
+      ma150:         stack.ma150,
+      trend:         'BULL',
+      swingBreached: lastHigh.price,
     };
   }
 
-  // Fix 8: SHORT now mirrors LONG — anchors to MA20, not MA60
-  if (price < ma20 && latest.low < prev.low && nearMA20) {
+  // ════════════════════════════════════════════════════════════════════════
+  // SHORT SETUP  (mirror image of LONG)
+  // ════════════════════════════════════════════════════════════════════════
+  if (stack.trend === 'BEAR') {
+
+    const recentLows  = getLatestSwings(swings, 'LOW',  2);
+    const recentHighs = getLatestSwings(swings, 'HIGH', 1);
+
+    if (recentLows.length < 2) return null;
+
+    const [prevLow, lastLow] = recentLows; // [older, newer]
+
+    // Gate 3: Latest swing LOW must be a Lower Low (LL)
+    if (lastLow.price >= prevLow.price) return null;
+
+    // Gate 4: Current price must have broken below the swing LOW
+    if (price >= lastLow.price) return null;
+
+    // Gate 5: MA30 must be within 0.8% above current price (resistance role)
+    if (ma30Role(price, stack.ma30, proximityPct) !== 'resistance') return null;
+
+    // ── Dynamic SL: place at prev confirmed swing HIGH ─────────────────────
+    const sl     = recentHighs.length > 0
+      ? recentHighs[0].price
+      : price * (1 + 0.015);
+    const slDist = sl - price;
+    const tp     = price - slDist * tpRatio;
+
     return {
-      type: 'SHORT',
+      type:    'SHORT',
       price,
-      ma: ma20,
-      time: latest.time,
-      message: `🔴 SHORT訊號! ${price.toFixed(2)} 在MA${ma20Period}(${ma20.toFixed(2)})下方創新低 · ${hkt}`,
+      ma:      stack.ma30,
+      time:    latest.time,
+      message:
+        `🔴 K均SHORT拐點 | 跌破前低 ${lastLow.price.toFixed(3)} → 入場 ${price.toFixed(3)} ` +
+        `| MA5=${stack.ma5.toFixed(2)} MA30=${stack.ma30.toFixed(2)} MA150=${stack.ma150.toFixed(2)} ` +
+        `| SL=${sl.toFixed(3)} TP=${tp.toFixed(3)} (RR=2.5) | ${hkt}`,
+
+      sl,
+      tp,
+      ma5:           stack.ma5,
+      ma30:          stack.ma30,
+      ma150:         stack.ma150,
+      trend:         'BEAR',
+      swingBreached: lastLow.price,
     };
   }
 
