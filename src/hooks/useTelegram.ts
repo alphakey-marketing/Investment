@@ -57,10 +57,16 @@ export function useTelegram() {
 
   const testSend = useCallback(async () => {
     return sendMessage(
-      `🤖 <b>KMA交易法</b> 連線測試成功!
-
-✅ Telegram警報已啟用
-有事發生時會收到即時訊號通知`
+      `🤖 <b>K均交易法 v2</b> 連線測試成功！\n\n` +
+      `✅ Telegram 警報已啟用\n` +
+      `📡 訊號觸發時你將收到以下格式通知：\n\n` +
+      `🟢 <b>LONG</b> 3081.HK\n` +
+      `📍 入場：29.850\n` +
+      `🛑 SL：29.420\n` +
+      `🎯 TP：30.925\n` +
+      `🧭 趨勢：BULL\n` +
+      `📐 拐點突破：29.730\n` +
+      `📊 MA5/30/150：29.81 / 29.75 / 28.60`
     );
   }, [sendMessage]);
 

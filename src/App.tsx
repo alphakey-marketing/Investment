@@ -26,8 +26,6 @@ import { Lang, tr } from './i18n';
 import {
   STALE_THRESHOLD_MS,
   SIGNAL_TOAST_DURATION_MS,
-  DEFAULT_SL_FRACTION,
-  DEFAULT_TP_FRACTION,
   LS_ROADMAP_DONE,
 } from './constants';
 import './App.css';
@@ -167,21 +165,19 @@ export default function App() {
     });
     if (Notification.permission === 'granted')
       new Notification(`KMA ${signal.type} — ${symbolLabel}`, { body: signal.message });
-    const tgMsg = [
-      `${isLong ? '🟢' : '🔴'} <b>KMA ${signal.type} Entry Signal</b>`,
-      `📊 <b>Asset:</b> ${symbolLabel} 💰 <b>Price:</b> HK$${signal.price.toFixed(2)}`,
-      `🛑 <b>S/L:</b> HK$${(isLong ? signal.price*(1-DEFAULT_SL_FRACTION) : signal.price*(1+DEFAULT_SL_FRACTION)).toFixed(2)} 🎯 <b>T/P:</b> HK$${(isLong ? signal.price*(1+DEFAULT_TP_FRACTION) : signal.price*(1-DEFAULT_TP_FRACTION)).toFixed(2)}`,
-      `⏰ ${new Date(signal.time * 1000).toLocaleString('en-HK')}`,
-      `<i>⚠️ For reference only</i>`,
-    ].join('\n');
-    sendMessage(tgMsg);
+    sendMessage(signal.message);
     sendEmail({
-      subject: `${isLong ? '🟢 LONG' : '🔴 SHORT'} Signal — ${symbolLabel} @ HK$${signal.price.toFixed(2)}`,
+      subject: `${isLong ? '🟢 LONG' : '🔴 SHORT'} Signal — ${symbolLabel} @ HK$${signal.price.toFixed(3)}`,
       signal_type: isLong ? '🟢 LONG' : '🔴 SHORT',
       asset: symbolLabel,
-      price: signal.price.toFixed(2),
-      stop_loss: (isLong ? signal.price*(1-DEFAULT_SL_FRACTION) : signal.price*(1+DEFAULT_SL_FRACTION)).toFixed(2),
-      take_profit: (isLong ? signal.price*(1+DEFAULT_TP_FRACTION) : signal.price*(1-DEFAULT_TP_FRACTION)).toFixed(2),
+      price: signal.price.toFixed(3),
+      stop_loss: signal.sl.toFixed(3),
+      take_profit: signal.tp.toFixed(3),
+      trend: signal.trend,
+      pivot_breached: signal.swingBreached.toFixed(3),
+      ma5: signal.ma5.toFixed(3),
+      ma30: signal.ma30.toFixed(3),
+      ma150: signal.ma150.toFixed(3),
       time: new Date(signal.time * 1000).toLocaleString('en-HK'),
       message: signal.message,
     });

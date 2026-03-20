@@ -30,14 +30,19 @@ export function useEmail() {
   }, []);
 
   const sendEmail = useCallback(async (params: {
-    subject: string;
-    signal_type: string;
-    asset: string;
-    price: string;
-    stop_loss: string;
-    take_profit: string;
-    time: string;
-    message: string;
+    subject:        string;
+    signal_type:    string;
+    asset:          string;
+    price:          string;
+    stop_loss:      string;
+    take_profit:    string;
+    trend:          string;
+    pivot_breached: string;
+    ma5:            string;
+    ma30:           string;
+    ma150:          string;
+    time:           string;
+    message:        string;
   }): Promise<boolean> => {
     if (!emailConfig.enabled || !emailConfig.serviceId || !emailConfig.templateId || !emailConfig.publicKey || !emailConfig.toEmail) {
       return false;
@@ -52,15 +57,20 @@ export function useEmail() {
           template_id: emailConfig.templateId,
           user_id:     emailConfig.publicKey,
           template_params: {
-            to_email:    emailConfig.toEmail,
-            subject:     params.subject,
-            signal_type: params.signal_type,
-            asset:       params.asset,
-            price:       params.price,
-            stop_loss:   params.stop_loss,
-            take_profit: params.take_profit,
-            time:        params.time,
-            message:     params.message,
+            to_email:        emailConfig.toEmail,
+            subject:         params.subject,
+            signal_type:     params.signal_type,
+            asset:           params.asset,
+            price:           params.price,
+            stop_loss:       params.stop_loss,
+            take_profit:     params.take_profit,
+            trend:           params.trend,
+            pivot_breached:  params.pivot_breached,
+            ma5:             params.ma5,
+            ma30:            params.ma30,
+            ma150:           params.ma150,
+            time:            params.time,
+            message:         params.message,
           },
         }),
       });
@@ -77,14 +87,19 @@ export function useEmail() {
 
   const testEmail = useCallback(async () => {
     return sendEmail({
-      subject:     '\u2705 KMA Signal App \u2014 Email Alert Test',
-      signal_type: '\uD83D\uDFE2 LONG (TEST)',
-      asset:       'XAUUSDT',
-      price:       '2345.00',
-      stop_loss:   '2321.55',
-      take_profit: '2415.35',
-      time:        new Date().toLocaleString('en-HK'),
-      message:     'Email alert is working correctly. You will receive LONG/SHORT signal emails here.',
+      subject:        '✅ KMA Signal App — Email Alert Test',
+      signal_type:    '🟢 LONG (TEST)',
+      asset:          '3081.HK',
+      price:          '29.850',
+      stop_loss:      '29.420',
+      take_profit:    '30.925',
+      trend:          'BULL',
+      pivot_breached: '29.730',
+      ma5:            '29.810',
+      ma30:           '29.750',
+      ma150:          '28.600',
+      time:           new Date().toLocaleString('en-HK'),
+      message:        'Email alert is working correctly. You will receive LONG/SHORT KMA v2 signal emails here.',
     });
   }, [sendEmail]);
 
