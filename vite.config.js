@@ -22,9 +22,10 @@ export default defineConfig({
       '.repl.co',
       '.sisko.replit.dev',
     ],
-    // ── Futu proxy: forward /api/* → localhost:3001 in dev ──────────────────
-    // When FutuOpenD + the proxy server are running, this makes /api/klines/...
-    // calls work seamlessly from the React dev server without CORS issues.
+    // ── API proxy in dev: forward /api/* → localhost:3001 ──────────────────
+    // In development, the backend server runs on port 3001,
+    // so we need to proxy API requests from the Vite dev server (port 5000).
+    // In production, the server serves both API and static files on the same port.
     proxy: {
       '/api': {
         target:       'http://localhost:3001',

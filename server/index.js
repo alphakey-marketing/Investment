@@ -6,21 +6,28 @@
  * Routes:
  *   GET /api/health
  *   GET /api/yahoo-klines/:ticker/:interval
+ *   GET * (serves built React app for SPA routing)
  *
  * Security: D2 CORS · D3 rate-limit · D4 allowlists · D5 proxy secret
  */
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = process.env.PROXY_PORT ?? 3001;
+const PORT = process.env.PORT ?? process.env.PROXY_PORT ?? 3001;
 
 // ── D2: CORS ─────────────────────────────────────────────────────────────────────────────
 // Allow all origins in Replit (origin is dynamic per repl URL).
 // For production, replace '*' with your specific Replit URL.
 app.use(cors({ origin: '*' }));
 app.use(express.json());
+
+// Trust proxy to correctly identify client IP when behind a proxy
+app.set('trust proxy', 1);
 
 // ── D3: Rate limiting — 60 req / IP / min ────────────────────────────────────────────
 const apiLimiter = rateLimit({
@@ -29,6 +36,7 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests — please wait a minute.' },
+  skip: (req) => !req.ip, // Skip rate limit if IP cannot be determined
 });
 app.use('/api/', apiLimiter);
 
@@ -158,9 +166,27 @@ app.get('/api/yahoo-klines/:ticker/:interval', async (req, res) => {
   }
 });
 
+// ── Serve built React app (SPA fallback) ────────────────────────────────────────────────────
+const distPath = join(__dirname, '../dist');
+
+// Serve static assets with long-term caching for versioned files
+app.use(express.static(distPath, {
+  maxAge: '1d',      // Cache versioned assets (JS, CSS with hash in filename)
+  immutable: true,   // Mark as immutable since hashes change on build
+  etag: false,
+}));
+
+// SPA routing fallback — serve index.html for all non-API routes
+// Don't cache index.html so users get fresh content
+app.get('*', (_req, res) => {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(join(distPath, 'index.html'));
+});
+
 app.listen(PORT, () => {
-  console.log(`\n🟢 Yahoo proxy ready on http://localhost:${PORT}`);
-  console.log(`   Endpoint : GET /api/yahoo-klines/3081.HK/:interval`);
+  console.log(`\n🟢 Server ready on http://localhost:${PORT}`);
+  console.log(`   React App: http://localhost:${PORT}`);
+  console.log(`   API Endpoint : GET /api/yahoo-klines/3081.HK/:interval`);
   console.log(`   Intervals: 5m | 15m | 1h | 4h | 1d`);
   console.log(`   Health   : http://localhost:${PORT}/api/health\n`);
 });
