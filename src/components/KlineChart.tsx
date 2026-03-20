@@ -1,26 +1,30 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, CrosshairMode } from 'lightweight-charts';
-import { Candle, MAPoint, SignalEvent } from '../types/binance';
+import { Candle, MAPoint, SignalEvent, KMASignalEvent } from '../types/binance';
 import { Lang } from '../i18n';
+import { findSwingPoints } from '../utils/swingPoints';
 
 type ChartType = 'candle' | 'line';
 
 interface Props {
   candles:    Candle[];
-  ma20:       MAPoint[];
-  ma60:       MAPoint[];
-  signal:     SignalEvent | null;
+  ma5:        MAPoint[];   // fast line
+  ma30:       MAPoint[];   // trend anchor
+  ma150:      MAPoint[];   // macro filter
+  signal:     KMASignalEvent | null;
   lang?:      Lang;
-  ma1Period?: number;  // for dynamic series title e.g. "MA20"
-  ma2Period?: number;  // for dynamic series title e.g. "MA60"
+  ma1Period?: number;
+  ma2Period?: number;
+  ma3Period?: number;
 }
 
-export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH', ma1Period = 20, ma2Period = 60 }: Props) {
+export default function KlineChart({ candles, ma5, ma30, ma150, signal, lang = 'ZH', ma1Period = 5, ma2Period = 30, ma3Period = 150 }: Props) {
   const containerRef    = useRef<HTMLDivElement>(null);
   const chartRef        = useRef<any>(null);
   const mainSeriesRef   = useRef<any>(null);
-  const ma20SeriesRef   = useRef<any>(null);
-  const ma60SeriesRef   = useRef<any>(null);
+  const ma5SeriesRef    = useRef<any>(null);
+  const ma30SeriesRef   = useRef<any>(null);
+  const ma150SeriesRef  = useRef<any>(null);
   const [chartType, setChartType] = useState<ChartType>('candle');
   const [showGuide, setShowGuide] = useState(false);
   const isEN = lang === 'EN';
@@ -31,10 +35,11 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH', m
 
     if (chartRef.current) {
       chartRef.current.remove();
-      chartRef.current     = null;
+      chartRef.current      = null;
       mainSeriesRef.current  = null;
-      ma20SeriesRef.current  = null;
-      ma60SeriesRef.current  = null;
+      ma5SeriesRef.current   = null;
+      ma30SeriesRef.current  = null;
+      ma150SeriesRef.current = null;
     }
 
     const chart = createChart(containerRef.current, {
@@ -75,22 +80,28 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH', m
           crosshairMarkerRadius:  5,
         });
 
-    // Dynamic series titles using actual MA periods passed from App
-    const ma20Series = chart.addLineSeries({
-      color: '#2196f3', lineWidth: 2,
+    const ma5Series = chart.addLineSeries({
+      color: '#2196f3', lineWidth: 1,
+      lineStyle: 2, // dotted
       title: `MA${ma1Period}`,
       priceLineVisible: false, lastValueVisible: true,
     });
-    const ma60Series = chart.addLineSeries({
+    const ma30Series = chart.addLineSeries({
       color: '#ff9800', lineWidth: 2,
       title: `MA${ma2Period}`,
       priceLineVisible: false, lastValueVisible: true,
     });
+    const ma150Series = chart.addLineSeries({
+      color: '#ab47bc', lineWidth: 3,
+      title: `MA${ma3Period}`,
+      priceLineVisible: false, lastValueVisible: true,
+    });
 
-    chartRef.current      = chart;
-    mainSeriesRef.current  = mainSeries;
-    ma20SeriesRef.current  = ma20Series;
-    ma60SeriesRef.current  = ma60Series;
+    chartRef.current       = chart;
+    mainSeriesRef.current   = mainSeries;
+    ma5SeriesRef.current    = ma5Series;
+    ma30SeriesRef.current   = ma30Series;
+    ma150SeriesRef.current  = ma150Series;
 
     const handleResize = () => {
       if (containerRef.current)
@@ -101,12 +112,13 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH', m
     return () => {
       window.removeEventListener('resize', handleResize);
       chart.remove();
-      chartRef.current      = null;
-      mainSeriesRef.current  = null;
-      ma20SeriesRef.current  = null;
-      ma60SeriesRef.current  = null;
+      chartRef.current       = null;
+      mainSeriesRef.current   = null;
+      ma5SeriesRef.current    = null;
+      ma30SeriesRef.current   = null;
+      ma150SeriesRef.current  = null;
     };
-  }, [chartType, ma1Period, ma2Period]); // rebuild when type or MA periods change
+  }, [chartType, ma1Period, ma2Period, ma3Period]);
 
   // ── Feed candle data ──────────────────────────────────────────────────
   useEffect(() => {
@@ -127,31 +139,47 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH', m
 
   // ── Feed MA data ─────────────────────────────────────────────────────
   useEffect(() => {
-    if (!ma20SeriesRef.current || ma20.length === 0) return;
-    try { ma20SeriesRef.current.setData(ma20.map((p) => ({ time: p.time, value: p.value }))); }
-    catch (e) { console.error('MA20 update error:', e); }
-  }, [ma20, chartType]);
+    if (!ma5SeriesRef.current || ma5.length === 0) return;
+    try { ma5SeriesRef.current.setData(ma5.map((p) => ({ time: p.time, value: p.value }))); }
+    catch (e) { console.error('MA5 update error:', e); }
+  }, [ma5, chartType]);
 
   useEffect(() => {
-    if (!ma60SeriesRef.current || ma60.length === 0) return;
-    try { ma60SeriesRef.current.setData(ma60.map((p) => ({ time: p.time, value: p.value }))); }
-    catch (e) { console.error('MA60 update error:', e); }
-  }, [ma60, chartType]);
+    if (!ma30SeriesRef.current || ma30.length === 0) return;
+    try { ma30SeriesRef.current.setData(ma30.map((p) => ({ time: p.time, value: p.value }))); }
+    catch (e) { console.error('MA30 update error:', e); }
+  }, [ma30, chartType]);
 
-  // ── Signal markers ─────────────────────────────────────────────────────
   useEffect(() => {
-    if (!mainSeriesRef.current) return;
-    if (!signal) { mainSeriesRef.current.setMarkers([]); return; }
+    if (!ma150SeriesRef.current || ma150.length === 0) return;
+    try { ma150SeriesRef.current.setData(ma150.map((p) => ({ time: p.time, value: p.value }))); }
+    catch (e) { console.error('MA150 update error:', e); }
+  }, [ma150, chartType]);
+
+  // ── Swing point markers ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mainSeriesRef.current || candles.length < 4) return;
     try {
-      mainSeriesRef.current.setMarkers([{
+      const swings = findSwingPoints(candles, 2);
+      const signalMarker = signal ? [{
         time:     signal.time,
         position: signal.type === 'LONG' ? 'belowBar' : 'aboveBar',
         color:    signal.type === 'LONG' ? '#00c853'  : '#ff1744',
         shape:    signal.type === 'LONG' ? 'arrowUp'  : 'arrowDown',
         text:     signal.type === 'LONG' ? '入場 ▲' : '入場 ▼',
-      }]);
-    } catch (e) { console.error('Marker error:', e); }
-  }, [signal, chartType]);
+      }] : [];
+      const swingMarkers = swings.map((sw) => ({
+        time:     candles[sw.index].time,
+        position: sw.type === 'HIGH' ? 'aboveBar' : 'belowBar',
+        color:    sw.type === 'HIGH' ? '#f0b90b'  : '#29b6f6',
+        shape:    sw.type === 'HIGH' ? 'arrowDown' : 'arrowUp',
+        text:     sw.label ?? sw.type,
+      }));
+      const allMarkers = [...swingMarkers, ...signalMarker]
+        .sort((a, b) => (a.time as number) - (b.time as number));
+      mainSeriesRef.current.setMarkers(allMarkers);
+    } catch (e) { console.error('Swing marker error:', e); }
+  }, [candles, signal, chartType]);
 
   return (
     <div style={styles.wrapper}>
@@ -181,6 +209,7 @@ export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH', m
             {/* Dynamic MA labels using actual periods */}
             <LegendDot color="#2196f3" label={`— MA${ma1Period}`} line />
             <LegendDot color="#ff9800" label={`— MA${ma2Period}`} line />
+            <LegendDot color="#ab47bc" label={`— MA${ma3Period}`} line />
             {signal && (
               <span style={{ fontSize: '0.72rem', color: signal.type === 'LONG' ? '#00c853' : '#ff1744', fontFamily: 'monospace' }}>
                 {signal.type === 'LONG' ? '▲ BUY' : '▼ SELL'}

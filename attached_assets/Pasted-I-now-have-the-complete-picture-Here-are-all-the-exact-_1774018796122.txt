@@ -1,0 +1,500 @@
+I now have the complete picture. Here are all the exact changes needed across all 3 S3 files.
+
+***
+
+## S3 Changes — Complete Manual Edit Guide
+
+All 3 files need changes. None of the S3 work has been done yet — they still reference the old MA20/MA60 model.
+
+***
+
+## File 1: `src/components/KlineChart.tsx`
+
+### Change 1 — Update imports (line 3)
+
+**Find:**
+```tsx
+import { Candle, MAPoint, SignalEvent } from '../types/binance';
+```
+**Replace with:**
+```tsx
+import { Candle, MAPoint, SignalEvent, KMASignalEvent } from '../types/binance';
+import { findSwingPoints } from '../utils/swingPoints';
+```
+
+***
+
+### Change 2 — Update Props interface (lines 8–16)
+
+**Find:**
+```tsx
+interface Props {
+  candles:    Candle[];
+  ma20:       MAPoint[];
+  ma60:       MAPoint[];
+  signal:     SignalEvent | null;
+  lang?:      Lang;
+  ma1Period?: number;  // for dynamic series title e.g. "MA20"
+  ma2Period?: number;  // for dynamic series title e.g. "MA60"
+}
+```
+**Replace with:**
+```tsx
+interface Props {
+  candles:    Candle[];
+  ma5:        MAPoint[];   // fast line
+  ma30:       MAPoint[];   // trend anchor
+  ma150:      MAPoint[];   // macro filter
+  signal:     KMASignalEvent | null;
+  lang?:      Lang;
+  ma1Period?: number;
+  ma2Period?: number;
+  ma3Period?: number;
+}
+```
+
+***
+
+### Change 3 — Update function signature (line 19)
+
+**Find:**
+```tsx
+export default function KlineChart({ candles, ma20, ma60, signal, lang = 'ZH', ma1Period = 20, ma2Period = 60 }: Props) {
+```
+**Replace with:**
+```tsx
+export default function KlineChart({ candles, ma5, ma30, ma150, signal, lang = 'ZH', ma1Period = 5, ma2Period = 30, ma3Period = 150 }: Props) {
+```
+
+***
+
+### Change 4 — Add ma150SeriesRef and rename existing refs (lines 21–27)
+
+**Find:**
+```tsx
+  const mainSeriesRef   = useRef<any>(null);
+  const ma20SeriesRef   = useRef<any>(null);
+  const ma60SeriesRef   = useRef<any>(null);
+```
+**Replace with:**
+```tsx
+  const mainSeriesRef   = useRef<any>(null);
+  const ma5SeriesRef    = useRef<any>(null);
+  const ma30SeriesRef   = useRef<any>(null);
+  const ma150SeriesRef  = useRef<any>(null);
+```
+
+***
+
+### Change 5 — Cleanup block inside the chart rebuild useEffect (lines 37–41)
+
+**Find:**
+```tsx
+      chartRef.current     = null;
+      mainSeriesRef.current  = null;
+      ma20SeriesRef.current  = null;
+      ma60SeriesRef.current  = null;
+```
+**Replace with:**
+```tsx
+      chartRef.current      = null;
+      mainSeriesRef.current  = null;
+      ma5SeriesRef.current   = null;
+      ma30SeriesRef.current  = null;
+      ma150SeriesRef.current = null;
+```
+
+***
+
+### Change 6 — Replace the two addLineSeries calls with three (around lines 72–82)
+
+**Find:**
+```tsx
+    // Dynamic series titles using actual MA periods passed from App
+    const ma20Series = chart.addLineSeries({
+      color: '#2196f3', lineWidth: 2,
+      title: `MA${ma1Period}`,
+      priceLineVisible: false, lastValueVisible: true,
+    });
+    const ma60Series = chart.addLineSeries({
+      color: '#ff9800', lineWidth: 2,
+      title: `MA${ma2Period}`,
+      priceLineVisible: false, lastValueVisible: true,
+    });
+
+    chartRef.current      = chart;
+    mainSeriesRef.current  = mainSeries;
+    ma20SeriesRef.current  = ma20Series;
+    ma60SeriesRef.current  = ma60Series;
+```
+**Replace with:**
+```tsx
+    const ma5Series = chart.addLineSeries({
+      color: '#2196f3', lineWidth: 1,
+      lineStyle: 2, // dotted
+      title: `MA${ma1Period}`,
+      priceLineVisible: false, lastValueVisible: true,
+    });
+    const ma30Series = chart.addLineSeries({
+      color: '#ff9800', lineWidth: 2,
+      title: `MA${ma2Period}`,
+      priceLineVisible: false, lastValueVisible: true,
+    });
+    const ma150Series = chart.addLineSeries({
+      color: '#ab47bc', lineWidth: 3,
+      title: `MA${ma3Period}`,
+      priceLineVisible: false, lastValueVisible: true,
+    });
+
+    chartRef.current       = chart;
+    mainSeriesRef.current   = mainSeries;
+    ma5SeriesRef.current    = ma5Series;
+    ma30SeriesRef.current   = ma30Series;
+    ma150SeriesRef.current  = ma150Series;
+```
+
+***
+
+### Change 7 — Update return cleanup at end of useEffect (around lines 88–94)
+
+**Find:**
+```tsx
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+      chartRef.current      = null;
+      mainSeriesRef.current  = null;
+      ma20SeriesRef.current  = null;
+      ma60SeriesRef.current  = null;
+    };
+  }, [chartType, ma1Period, ma2Period]); // rebuild when type or MA periods change
+```
+**Replace with:**
+```tsx
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+      chartRef.current       = null;
+      mainSeriesRef.current   = null;
+      ma5SeriesRef.current    = null;
+      ma30SeriesRef.current   = null;
+      ma150SeriesRef.current  = null;
+    };
+  }, [chartType, ma1Period, ma2Period, ma3Period]);
+```
+
+***
+
+### Change 8 — Replace the two MA data feed useEffects with three (around lines 103–112)
+
+**Find:**
+```tsx
+  useEffect(() => {
+    if (!ma20SeriesRef.current || ma20.length === 0) return;
+    try { ma20SeriesRef.current.setData(ma20.map((p) => ({ time: p.time, value: p.value }))); }
+    catch (e) { console.error('MA20 update error:', e); }
+  }, [ma20, chartType]);
+
+  useEffect(() => {
+    if (!ma60SeriesRef.current || ma60.length === 0) return;
+    try { ma60SeriesRef.current.setData(ma60.map((p) => ({ time: p.time, value: p.value }))); }
+    catch (e) { console.error('MA60 update error:', e); }
+  }, [ma60, chartType]);
+```
+**Replace with:**
+```tsx
+  useEffect(() => {
+    if (!ma5SeriesRef.current || ma5.length === 0) return;
+    try { ma5SeriesRef.current.setData(ma5.map((p) => ({ time: p.time, value: p.value }))); }
+    catch (e) { console.error('MA5 update error:', e); }
+  }, [ma5, chartType]);
+
+  useEffect(() => {
+    if (!ma30SeriesRef.current || ma30.length === 0) return;
+    try { ma30SeriesRef.current.setData(ma30.map((p) => ({ time: p.time, value: p.value }))); }
+    catch (e) { console.error('MA30 update error:', e); }
+  }, [ma30, chartType]);
+
+  useEffect(() => {
+    if (!ma150SeriesRef.current || ma150.length === 0) return;
+    try { ma150SeriesRef.current.setData(ma150.map((p) => ({ time: p.time, value: p.value }))); }
+    catch (e) { console.error('MA150 update error:', e); }
+  }, [ma150, chartType]);
+```
+
+***
+
+### Change 9 — Add swing HIGH/LOW markers useEffect (add after the signal markers useEffect, around line 130)
+
+**Find** (end of signal markers useEffect):
+```tsx
+  }, [signal, chartType]);
+```
+**Replace with** (keep the existing closing then ADD the new block right after):
+```tsx
+  }, [signal, chartType]);
+
+  // ── Swing point markers ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mainSeriesRef.current || candles.length < 4) return;
+    try {
+      const swings = findSwingPoints(candles, 2);
+      const signalMarker = signal ? [{
+        time:     signal.time,
+        position: signal.type === 'LONG' ? 'belowBar' : 'aboveBar',
+        color:    signal.type === 'LONG' ? '#00c853'  : '#ff1744',
+        shape:    signal.type === 'LONG' ? 'arrowUp'  : 'arrowDown',
+        text:     signal.type === 'LONG' ? '入場 ▲' : '入場 ▼',
+      }] : [];
+      const swingMarkers = swings.map((sw) => ({
+        time:     candles[sw.index].time,
+        position: sw.type === 'HIGH' ? 'aboveBar' : 'belowBar',
+        color:    sw.type === 'HIGH' ? '#f0b90b'  : '#29b6f6',
+        shape:    sw.type === 'HIGH' ? 'arrowDown' : 'arrowUp',
+        text:     sw.label ?? sw.type,
+      }));
+      const allMarkers = [...swingMarkers, ...signalMarker]
+        .sort((a, b) => (a.time as number) - (b.time as number));
+      mainSeriesRef.current.setMarkers(allMarkers);
+    } catch (e) { console.error('Swing marker error:', e); }
+  }, [candles, signal, chartType]);
+```
+
+> ⚠️ Also **delete** the old standalone signal-markers-only `useEffect` (the one that calls `mainSeriesRef.current.setMarkers([{...}])` without swing points), since the new combined one above replaces it.
+
+***
+
+### Change 10 — Update legend dots in JSX (find `LegendDot` lines for MA, around line 160)
+
+**Find:**
+```tsx
+            <LegendDot color="#2196f3" label={`— MA${ma1Period}`} line />
+            <LegendDot color="#ff9800" label={`— MA${ma2Period}`} line />
+```
+**Replace with:**
+```tsx
+            <LegendDot color="#2196f3" label={`— MA${ma1Period}`} line />
+            <LegendDot color="#ff9800" label={`— MA${ma2Period}`} line />
+            <LegendDot color="#ab47bc" label={`— MA${ma3Period}`} line />
+```
+
+***
+
+## File 2: `src/components/SignalPanel.tsx`
+
+### Change 1 — Update imports (line 2)
+
+**Find:**
+```tsx
+import { Candle, SignalEvent, MAPoint } from '../types/binance';
+```
+**Replace with:**
+```tsx
+import { Candle, KMASignalEvent, MAPoint } from '../types/binance';
+```
+
+***
+
+### Change 2 — Update Props interface (lines 4–11)
+
+**Find:**
+```tsx
+interface Props {
+  signal: SignalEvent | null;
+  ma20: MAPoint[];
+  ma60: MAPoint[];
+  lastPrice: number | null;
+  lang: Lang;
+  candles?: Candle[];
+}
+```
+**Replace with:**
+```tsx
+interface Props {
+  signal:    KMASignalEvent | null;
+  ma5:       MAPoint[];
+  ma30:      MAPoint[];
+  ma150:     MAPoint[];
+  lastPrice: number | null;
+  lang:      Lang;
+  candles?:  Candle[];
+}
+```
+
+***
+
+### Change 3 — Update the main export function signature (near bottom)
+
+**Find:**
+```tsx
+export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang, candles }: Props) {
+  const latestMA20 = ma20[ma20.length - 1]?.value ?? null;
+  const latestMA60 = ma60[ma60.length - 1]?.value ?? null;
+  const isEN = lang === 'EN';
+  const isBull = lastPrice && latestMA20 ? lastPrice > latestMA20 : null;
+```
+**Replace with:**
+```tsx
+export default function SignalPanel({ signal, ma5, ma30, ma150, lastPrice, lang, candles }: Props) {
+  const latestMA5  = ma5[ma5.length - 1]?.value ?? null;
+  const latestMA30 = ma30[ma30.length - 1]?.value ?? null;
+  const latestMA150 = ma150[ma150.length - 1]?.value ?? null;
+  const isEN = lang === 'EN';
+  const isBull = lastPrice && latestMA30 ? lastPrice > latestMA30 : null;
+```
+
+***
+
+### Change 4 — Update the StatCards row (find the 4 StatCard calls)
+
+**Find:**
+```tsx
+        <StatCard label={isEN ? 'Current Price' : '現價 (USDT)'} value={`$${lastPrice?.toFixed(2) ?? '---'}`} color="#f0b90b"
+          tip={isEN ? 'Live market price, updates every 10 seconds.' : '即時市場價格，每10秒自動更新。'}
+          sub={isEN ? 'Updates every 10s' : '每10秒更新'} />
+        <StatCard label="MA20" value={`$${latestMA20?.toFixed(2) ?? '---'}`} color="#29b6f6"
+          tip={isEN ? 'Average of last 20 candles. Short-term trend. Price above = bullish.' : '最近20根K線均值，短期趨勢。現價在上 = 多頭。'}
+          sub={isEN ? 'Short-term avg' : '短期均線'} />
+        <StatCard label="MA60" value={`$${latestMA60?.toFixed(2) ?? '---'}`} color="#ab47bc"
+          tip={isEN ? 'Average of last 60 candles. Big-picture trend. Price below = bearish.' : '最近60根K線均值，長期趨勢。現價在下 = 空頭。'}
+          sub={isEN ? 'Long-term avg' : '長期均線'} />
+        <StatCard
+          label={isEN ? 'Trend' : '趨勢'}
+          value={isBull === null ? '---' : isBull ? (isEN ? '⬆ Bullish' : '⬆ 多頭') : (isEN ? '⬇ Bearish' : '⬇ 空頭')}
+          color={isBull === null ? '#888' : isBull ? '#00c853' : '#ff1744'}
+          tip={isEN ? 'Bullish = price above MA20 (boat on water). Bearish = price below (boat sinking).' : '多頭 = 價格浮在MA20上如船在水面；空頭 = 沉在線下。'}
+          sub={isEN ? 'Price vs MA20' : '現價 vs MA20'} />
+```
+**Replace with:**
+```tsx
+        <StatCard label={isEN ? 'Current Price' : '現價 (HKD)'} value={`$${lastPrice?.toFixed(3) ?? '---'}`} color="#f0b90b"
+          tip={isEN ? 'Live market price, updates every 5 minutes.' : '即時市場價格，每5分鐘更新。'}
+          sub={isEN ? 'Updates every 5m' : '每5分鐘更新'} />
+        <StatCard label="MA5" value={`$${latestMA5?.toFixed(3) ?? '---'}`} color="#2196f3"
+          tip={isEN ? 'Fast MA5 — tracks price closely.' : 'MA5快線，貼近價格走勢。'}
+          sub={isEN ? 'Fast line' : '快線'} />
+        <StatCard label="MA30" value={`$${latestMA30?.toFixed(3) ?? '---'}`} color="#ff9800"
+          tip={isEN ? 'MA30 — trend anchor, dynamic support/resistance.' : 'MA30趨勢錨，動態支撐/阻力。'}
+          sub={isEN ? 'Trend anchor' : '趨勢錨'} />
+        <StatCard label="MA150" value={`$${latestMA150?.toFixed(3) ?? '---'}`} color="#ab47bc"
+          tip={isEN ? 'MA150 — macro trend filter. BULL/BEAR regime.' : 'MA150宏觀趨勢過濾器，判斷牛熊格局。'}
+          sub={isEN ? 'Macro filter' : '宏觀過濾'} />
+```
+
+***
+
+### Change 5 — Update signal card LevelBadges to use dynamic SL/TP from KMASignalEvent
+
+**Find:**
+```tsx
+              <LevelBadge icon="🛑" label={isEN ? 'Stop Loss' : '止蝕'}
+                value={`$${(signal.type === 'LONG' ? signal.price * 0.99 : signal.price * 1.01).toFixed(2)}`} color="#ff5252"
+                tip={isEN ? 'Exit here if trade goes wrong. Limits your loss to ~1%.' : '交易出錯時在此離場，損失限制在約1%。'} />
+              <LevelBadge icon="🎯" label={isEN ? 'Take Profit' : '止盈'}
+                value={`$${(signal.type === 'LONG' ? signal.price * 1.03 : signal.price * 0.97).toFixed(2)}`} color="#00c853"
+                tip={isEN ? 'Target exit. Profit = 3× stop loss distance.' : '目標離場。利潤 = 止蝕距離的3倍。'} />
+              <LevelBadge icon="⚖️" label={isEN ? 'R:R Ratio' : '盈虧比'} value="3 : 1" color="#f0b90b"
+                tip={isEN ? 'Risk $1 to make $3. Works long-term even at 40% win rate.' : '冒$1賺$3。即使40%勝率長期仍盈利。'} />
+```
+**Replace with:**
+```tsx
+              <LevelBadge icon="🛑" label={isEN ? 'Stop Loss' : '止蝕'}
+                value={`$${signal.sl.toFixed(3)}`} color="#ff5252"
+                tip={isEN ? 'Structure-based SL — placed at prev swing low/high.' : '結構式止蝕——設於前一波動低/高點。'} />
+              <LevelBadge icon="🎯" label={isEN ? 'Take Profit' : '止盈'}
+                value={`$${signal.tp.toFixed(3)}`} color="#00c853"
+                tip={isEN ? 'TP = entry ± (SL distance × 2.5). RR = 2.5:1.' : '止盈 = 入場 ± (止蝕距離 × 2.5)，盈虧比2.5:1。'} />
+              <LevelBadge icon="📐" label={isEN ? 'Pivot' : '拐點'}
+                value={`$${signal.swingBreached.toFixed(3)}`} color="#f0b90b"
+                tip={isEN ? 'The swing HIGH/LOW that price broke through to trigger this signal.' : '觸發訊號的前波高/低點突破位。'} />
+              <LevelBadge icon="🧭" label={isEN ? 'Trend' : '趨勢'}
+                value={signal.trend === 'BULL' ? '🐂 BULL' : '🐻 BEAR'} color={signal.trend === 'BULL' ? '#00c853' : '#ff1744'}
+                tip={isEN ? 'Triple MA stack direction at signal time.' : '訊號觸發時的三線多空格局。'} />
+```
+
+***
+
+## File 3: `src/components/ControlBar.tsx`
+
+### Change 1 — Add `ma3Period` to Props interface
+
+**Find:**
+```tsx
+interface Props {
+  symbol:           string;
+  interval:         HKInterval;
+  ma1Period:        number;
+  ma2Period:        number;
+  lang:             Lang;
+  onSymbolChange:   (s: string) => void;
+  onIntervalChange: (i: HKInterval) => void;
+  onMa1Change:      (n: number) => void;
+  onMa2Change:      (n: number) => void;
+}
+```
+**Replace with:**
+```tsx
+interface Props {
+  symbol:           string;
+  interval:         HKInterval;
+  ma1Period:        number;
+  ma2Period:        number;
+  ma3Period:        number;  // fixed at 150, read-only
+  lang:             Lang;
+  onSymbolChange:   (s: string) => void;
+  onIntervalChange: (i: HKInterval) => void;
+  onMa1Change:      (n: number) => void;
+  onMa2Change:      (n: number) => void;
+}
+```
+
+***
+
+### Change 2 — Destructure `ma3Period` in function signature
+
+**Find:**
+```tsx
+export default function ControlBar({
+  symbol, interval, ma1Period, ma2Period, lang,
+  onSymbolChange, onIntervalChange, onMa1Change, onMa2Change,
+}: Props) {
+```
+**Replace with:**
+```tsx
+export default function ControlBar({
+  symbol, interval, ma1Period, ma2Period, ma3Period, lang,
+  onSymbolChange, onIntervalChange, onMa1Change, onMa2Change,
+}: Props) {
+```
+
+***
+
+### Change 3 — Add MA3 read-only label in the MA Settings Group
+
+**Find** (inside the MA Settings Group, after the closing `</div>` of maRow and before the hint `<span>`):
+```tsx
+        <span style={{ fontSize: '0.65rem', color: '#2a2a3e', fontFamily: 'monospace' }}>
+          {isEN ? '💡 For Gold ETF try MA20/MA60 on 1h charts' : '💡 黃金ETF建證1小時圖試用MA20/MA60'}
+        </span>
+```
+**Replace with:**
+```tsx
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+          <span style={{ fontSize: '0.62rem', color: '#ab47bc', fontFamily: 'monospace' }}>
+            {isEN ? 'Macro (MA3)' : '宏觀 MA3'}
+          </span>
+          <span style={{
+            background: '#ab47bc22', border: '1px solid #ab47bc66',
+            color: '#ab47bc', padding: '4px 10px', borderRadius: 5,
+            fontFamily: 'monospace', fontSize: '0.82rem', letterSpacing: 1,
+          }}>
+            {ma3Period} <span style={{ fontSize: '0.6rem', color: '#666' }}>{isEN ? '(fixed)' : '(固定)'}</span>
+          </span>
+        </div>
+        <span style={{ fontSize: '0.65rem', color: '#2a2a3e', fontFamily: 'monospace' }}>
+          {isEN ? '💡 MA5/MA30/MA150 — K均交易法 v2 triple stack' : '💡 MA5/MA30/MA150 — K均三線系統 v2'}
+        </span>
+```
+
+***
+

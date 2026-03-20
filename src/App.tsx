@@ -131,9 +131,10 @@ export default function App() {
   const isStale = lastUpdated !== null && (now - lastUpdated.getTime()) > STALE_THRESHOLD_MS;
   const secsSinceUpdate = lastUpdated ? Math.round((now - lastUpdated.getTime()) / 1000) : null;
 
-  const ma20 = calculateSMA(candles, ma1Period);
-  const ma60 = calculateSMA(candles, ma2Period);
-  const signal = detectSignal(candles, ma1Period, ma2Period);
+  const ma5 = calculateSMA(candles, ma1Period);
+  const ma30 = calculateSMA(candles, ma2Period);
+  const ma150 = calculateSMA(candles, ma3Period);
+  const signal = detectSignal(candles, ma1Period, ma2Period, ma3Period);
   const { history, clearHistory } = useSignalHistory(signal);
   const { config, saveConfig, sendMessage, testSend, sending, lastStatus } = useTelegram();
   const { emailConfig, saveEmailConfig, sendEmail, testEmail, emailSending, emailStatus } = useEmail();
@@ -280,6 +281,7 @@ export default function App() {
         interval={klineInterval}
         ma1Period={ma1Period}
         ma2Period={ma2Period}
+        ma3Period={ma3Period}
         lang={lang}
         onSymbolChange={(s) => setSymbol(s as HKTicker)}
         onIntervalChange={handleIntervalChange}
@@ -296,10 +298,14 @@ export default function App() {
           <ErrorBoundary fallback={isEN ? 'Chart failed to load' : '圖表載入失敗'}>
             <KlineChart
               candles={candles}
-              ma20={ma20}
-              ma60={ma60}
+              ma5={ma5}
+              ma30={ma30}
+              ma150={ma150}
               signal={signal}
               lang={lang}
+              ma1Period={ma1Period}
+              ma2Period={ma2Period}
+              ma3Period={ma3Period}
             />
           </ErrorBoundary>
         ) : loading ? (
@@ -339,7 +345,7 @@ export default function App() {
         <>
           <ErrorBoundary fallback="Signal panel failed">
             <div id="signal-panel">
-              <SignalPanel signal={signal} ma20={ma20} ma60={ma60} lastPrice={lastPrice} lang={lang} candles={candles} />
+              <SignalPanel signal={signal} ma5={ma5} ma30={ma30} ma150={ma150} lastPrice={lastPrice} lang={lang} candles={candles} ma1Period={ma1Period} ma2Period={ma2Period} ma3Period={ma3Period} />
             </div>
           </ErrorBoundary>
           <ErrorBoundary fallback="Calculator failed">

@@ -45,6 +45,7 @@ interface Props {
   interval:         HKInterval;
   ma1Period:        number;
   ma2Period:        number;
+  ma3Period:        number;
   lang:             Lang;
   onSymbolChange:   (s: string) => void;
   onIntervalChange: (i: HKInterval) => void;
@@ -53,7 +54,7 @@ interface Props {
 }
 
 export default function ControlBar({
-  symbol, interval, ma1Period, ma2Period, lang,
+  symbol, interval, ma1Period, ma2Period, ma3Period, lang,
   onSymbolChange, onIntervalChange, onMa1Change, onMa2Change,
 }: Props) {
   const isEN = lang === 'EN';
@@ -147,20 +148,29 @@ export default function ControlBar({
       >
         <div style={styles.maRow}>
           <MaInput
-            label={isEN ? 'Short (MA1)' : '短線 MA1'}
+            label={isEN ? 'Fast (MA1)' : '快速 MA1'}
             value={ma1Period}
-            color="#29b6f6"
-            tip={isEN ? `Averages last ${ma1Period} candles — short-term trend` : `計算最近 ${ma1Period} 根K線均價，短期趨勢`}
+            color="#2196f3"
+            tip={isEN ? `Averages last ${ma1Period} candles — fast entry signal` : `計算最近 ${ma1Period} 根K線均價，快速入場訊號`}
             onChange={(v) => onMa1Change(v)}
           />
           <span style={{ color: '#333', fontSize: '1rem', paddingTop: 14 }}>/</span>
           <MaInput
-            label={isEN ? 'Long (MA2)' : '長線 MA2'}
+            label={isEN ? 'Trend (MA2)' : '趨勢 MA2'}
             value={ma2Period}
-            color="#ab47bc"
-            tip={isEN ? `Averages last ${ma2Period} candles — long-term trend` : `計算最近 ${ma2Period} 根K線均價，長期趨勢`}
+            color="#ff9800"
+            tip={isEN ? `Averages last ${ma2Period} candles — trend anchor` : `計算最近 ${ma2Period} 根K線均價，趨勢錨點`}
             onChange={(v) => onMa2Change(v)}
           />
+          <span style={{ color: '#333', fontSize: '1rem', paddingTop: 14 }}>/</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: '0.65rem', color: '#555', fontFamily: 'monospace' }}>
+              {isEN ? 'Macro (MA3)' : '宏觀 MA3'}
+            </span>
+            <span style={{ fontSize: '0.78rem', color: '#999', fontFamily: 'monospace', fontWeight: 'bold' }}>
+              {ma3Period} {isEN ? 'fixed' : '固定'}
+            </span>
+          </div>
         </div>
         <span style={{ fontSize: '0.65rem', color: '#2a2a3e', fontFamily: 'monospace' }}>
           {isEN ? '💡 For Gold ETF try MA20/MA60 on 1h charts' : '💡 黃金ETF建證1小時圖試用MA20/MA60'}

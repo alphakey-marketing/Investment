@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
-import { Candle, SignalEvent, MAPoint } from '../types/binance';
+import { Candle, KMASignalEvent, MAPoint } from '../types/binance';
 import { Lang, tr } from '../i18n';
 
 interface Props {
-  signal: SignalEvent | null;
-  ma20: MAPoint[];
-  ma60: MAPoint[];
-  lastPrice: number | null;
-  lang: Lang;
-  candles?: Candle[];
+  signal:     KMASignalEvent | null;
+  ma5:        MAPoint[];
+  ma30:       MAPoint[];
+  ma150:      MAPoint[];
+  lastPrice:  number | null;
+  lang:       Lang;
+  candles?:   Candle[];
+  ma1Period?: number;
+  ma2Period?: number;
+  ma3Period?: number;
 }
 
 function Tip({ text, children }: { text: string; children: React.ReactNode }) {
@@ -43,14 +47,14 @@ function StatCard({ label, value, color, tip, sub }: { label: string; value: str
 
 // ─── Live Wait Checklist ───────────────────────────────────────────────────────
 function WaitCard({
-  lastPrice, latestMA20, latestMA60, isEN,
+  lastPrice, latestMA5, latestMA30, isEN,
 }: {
   lastPrice: number | null;
-  latestMA20: number | null;
-  latestMA60: number | null;
+  latestMA5: number | null;
+  latestMA30: number | null;
   isEN: boolean;
 }) {
-  if (!lastPrice || !latestMA20 || !latestMA60) {
+  if (!lastPrice || !latestMA5 || !latestMA30) {
     return (
       <div style={wS.card}>
         <div style={wS.icon}>⏳</div>
@@ -62,27 +66,27 @@ function WaitCard({
   const PROX = 0.005; // 0.5%
 
   // ── LONG check ──
-  const longZoneLow  = latestMA20 * (1 - PROX);   // e.g. MA20 × 0.995
-  const longZoneHigh = latestMA20 * (1 + PROX);   // e.g. MA20 × 1.005
-  const nearMA20     = Math.abs(lastPrice - latestMA20) / latestMA20 < PROX;
-  const aboveMA20    = lastPrice > latestMA20;
-  // proximity 0→1 (1 = right on MA20)
-  const longProx     = Math.max(0, 1 - Math.abs(lastPrice - latestMA20) / latestMA20 / PROX);
+  const longZoneLow  = latestMA5 * (1 - PROX);   // e.g. MA5 × 0.995
+  const longZoneHigh = latestMA5 * (1 + PROX);   // e.g. MA5 × 1.005
+  const nearMA5      = Math.abs(lastPrice - latestMA5) / latestMA5 < PROX;
+  const aboveMA5     = lastPrice > latestMA5;
+  // proximity 0→1 (1 = right on MA5)
+  const longProx     = Math.max(0, 1 - Math.abs(lastPrice - latestMA5) / latestMA5 / PROX);
 
   // ── SHORT check ──
-  const shortZoneLow  = latestMA60 * (1 - PROX);
-  const shortZoneHigh = latestMA60 * (1 + PROX);
-  const nearMA60      = Math.abs(lastPrice - latestMA60) / latestMA60 < PROX;
-  const belowMA60     = lastPrice < latestMA60;
-  const shortProx     = Math.max(0, 1 - Math.abs(lastPrice - latestMA60) / latestMA60 / PROX);
+  const shortZoneLow  = latestMA30 * (1 - PROX);
+  const shortZoneHigh = latestMA30 * (1 + PROX);
+  const nearMA30      = Math.abs(lastPrice - latestMA30) / latestMA30 < PROX;
+  const belowMA30     = lastPrice < latestMA30;
+  const shortProx     = Math.max(0, 1 - Math.abs(lastPrice - latestMA30) / latestMA30 / PROX);
 
   // Distance in dollars
-  const distMA20 = Math.abs(lastPrice - latestMA20);
-  const distMA60 = Math.abs(lastPrice - latestMA60);
+  const distMA5 = Math.abs(lastPrice - latestMA5);
+  const distMA30 = Math.abs(lastPrice - latestMA30);
 
   // Which scenario is closer?
-  const longReady  = aboveMA20 && nearMA20;
-  const shortReady = belowMA60 && nearMA60;
+  const longReady  = aboveMA5 && nearMA5;
+  const shortReady = belowMA30 && nearMA30;
 
   return (
     <div style={wS.card}>
@@ -117,32 +121,32 @@ function WaitCard({
         color="#00c853"
       >
         <CondRow
-          ok={aboveMA20}
-          label={isEN ? 'Price is ABOVE MA20' : '現價在 MA20 上方'}
+          ok={aboveMA5}
+          label={isEN ? 'Price is ABOVE MA5' : '現價在 MA5 上方'}
           detail={
-            aboveMA20
-              ? (isEN ? `✅ Yes — $${lastPrice.toFixed(2)} > MA20 $${latestMA20.toFixed(2)}` : `✅ 是 — $${lastPrice.toFixed(2)} > MA20 $${latestMA20.toFixed(2)}`)
-              : (isEN ? `❌ No — price $${lastPrice.toFixed(2)} is still BELOW MA20 $${latestMA20.toFixed(2)}` : `❌ 否 — 現價 $${lastPrice.toFixed(2)} 仍低於 MA20 $${latestMA20.toFixed(2)}`)
+            aboveMA5
+              ? (isEN ? `✅ Yes — $${lastPrice.toFixed(2)} > MA5 $${latestMA5.toFixed(2)}` : `✅ 是 — $${lastPrice.toFixed(2)} > MA5 $${latestMA5.toFixed(2)}`)
+              : (isEN ? `❌ No — price $${lastPrice.toFixed(2)} is still BELOW MA5 $${latestMA5.toFixed(2)}` : `❌ 否 — 現價 $${lastPrice.toFixed(2)} 仍低於 MA5 $${latestMA5.toFixed(2)}`)
           }
           tip={isEN ? 'The rule: only buy when price is floating above the MA line.' : '規則：只在價格浮於 MA 線上方時才考慮買入。'}
           color="#00c853"
         />
         <CondRow
-          ok={nearMA20}
-          label={isEN ? 'Price is close to MA20 (within 0.5%)' : '現價接近 MA20（0.5%範圍內）'}
+          ok={nearMA5}
+          label={isEN ? 'Price is close to MA5 (within 0.5%)' : '現價接近 MA5（0.5%範圍內）'}
           detail={
-            nearMA20
-              ? (isEN ? `✅ Yes — only $${distMA20.toFixed(2)} away (${((distMA20 / latestMA20) * 100).toFixed(2)}%)` : `✅ 是 — 距離只有 $${distMA20.toFixed(2)}（${((distMA20 / latestMA20) * 100).toFixed(2)}%）`)
-              : (isEN ? `❌ Still $${distMA20.toFixed(2)} away — need to be within $${(latestMA20 * PROX).toFixed(2)} of MA20` : `❌ 還差 $${distMA20.toFixed(2)} — 需進入 MA20±$${(latestMA20 * PROX).toFixed(2)} 的範圍內`)
+            nearMA5
+              ? (isEN ? `✅ Yes — only $${distMA5.toFixed(2)} away (${((distMA5 / latestMA5) * 100).toFixed(2)}%)` : `✅ 是 — 距離只有 $${distMA5.toFixed(2)}（${((distMA5 / latestMA5) * 100).toFixed(2)}%）`)
+              : (isEN ? `❌ Still $${distMA5.toFixed(2)} away — need to be within $${(latestMA5 * PROX).toFixed(2)} of MA5` : `❌ 還差 $${distMA5.toFixed(2)} — 需進入 MA5±$${(latestMA5 * PROX).toFixed(2)} 的範圍內`)
           }
           tip={isEN
-            ? `The "arrive at the platform" rule. MA20 zone: $${longZoneLow.toFixed(2)} → $${longZoneHigh.toFixed(2)}`
-            : `「到位才動」規則。MA20 觸發區間：$${longZoneLow.toFixed(2)} → $${longZoneHigh.toFixed(2)}`}
+            ? `The "arrive at the platform" rule. MA5 zone: $${longZoneLow.toFixed(2)} → $${longZoneHigh.toFixed(2)}`
+            : `「到位才動」規則。MA5 觸發區間：$${longZoneLow.toFixed(2)} → $${longZoneHigh.toFixed(2)}`}
           color="#00c853"
           progress={longProx}
           progressLabel={isEN
-            ? `Zone: $${longZoneLow.toFixed(2)} ← MA20 → $${longZoneHigh.toFixed(2)}`
-            : `觸發區：$${longZoneLow.toFixed(2)} ← MA20 $${latestMA20.toFixed(2)} → $${longZoneHigh.toFixed(2)}`}
+            ? `Zone: $${longZoneLow.toFixed(2)} ← MA5 → $${longZoneHigh.toFixed(2)}`
+            : `觸發區：$${longZoneLow.toFixed(2)} ← MA5 $${latestMA5.toFixed(2)} → $${longZoneHigh.toFixed(2)}`}
         />
         <CondRow
           ok={false}
@@ -164,32 +168,32 @@ function WaitCard({
         color="#ff1744"
       >
         <CondRow
-          ok={belowMA60}
-          label={isEN ? 'Price is BELOW MA60' : '現價在 MA60 下方'}
+          ok={belowMA30}
+          label={isEN ? 'Price is BELOW MA30' : '現價在 MA30 下方'}
           detail={
-            belowMA60
-              ? (isEN ? `✅ Yes — $${lastPrice.toFixed(2)} < MA60 $${latestMA60.toFixed(2)}` : `✅ 是 — $${lastPrice.toFixed(2)} < MA60 $${latestMA60.toFixed(2)}`)
-              : (isEN ? `❌ No — price $${lastPrice.toFixed(2)} is still ABOVE MA60 $${latestMA60.toFixed(2)}` : `❌ 否 — 現價 $${lastPrice.toFixed(2)} 仍高於 MA60 $${latestMA60.toFixed(2)}`)
+            belowMA30
+              ? (isEN ? `✅ Yes — $${lastPrice.toFixed(2)} < MA30 $${latestMA30.toFixed(2)}` : `✅ 是 — $${lastPrice.toFixed(2)} < MA30 $${latestMA30.toFixed(2)}`)
+              : (isEN ? `❌ No — price $${lastPrice.toFixed(2)} is still ABOVE MA30 $${latestMA30.toFixed(2)}` : `❌ 否 — 現價 $${lastPrice.toFixed(2)} 仍高於 MA30 $${latestMA30.toFixed(2)}`)
           }
-          tip={isEN ? 'The rule: only sell/short when price is below the MA60 line.' : '規則：只在價格沉於 MA60 線下方時才考慮賣出。'}
+          tip={isEN ? 'The rule: only sell/short when price is below the MA30 line.' : '規則：只在價格沉於 MA30 線下方時才考慮賣出。'}
           color="#ff1744"
         />
         <CondRow
-          ok={nearMA60}
-          label={isEN ? 'Price is close to MA60 (within 0.5%)' : '現價接近 MA60（0.5%範圍內）'}
+          ok={nearMA30}
+          label={isEN ? 'Price is close to MA30 (within 0.5%)' : '現價接近 MA30（0.5%範圍內）'}
           detail={
-            nearMA60
-              ? (isEN ? `✅ Yes — only $${distMA60.toFixed(2)} away (${((distMA60 / latestMA60) * 100).toFixed(2)}%)` : `✅ 是 — 距離只有 $${distMA60.toFixed(2)}（${((distMA60 / latestMA60) * 100).toFixed(2)}%）`)
-              : (isEN ? `❌ Still $${distMA60.toFixed(2)} away — need within $${(latestMA60 * PROX).toFixed(2)} of MA60` : `❌ 還差 $${distMA60.toFixed(2)} — 需進入 MA60±$${(latestMA60 * PROX).toFixed(2)} 的範圍內`)
+            nearMA30
+              ? (isEN ? `✅ Yes — only $${distMA30.toFixed(2)} away (${((distMA30 / latestMA30) * 100).toFixed(2)}%)` : `✅ 是 — 距離只有 $${distMA30.toFixed(2)}（${((distMA30 / latestMA30) * 100).toFixed(2)}%）`)
+              : (isEN ? `❌ Still $${distMA30.toFixed(2)} away — need within $${(latestMA30 * PROX).toFixed(2)} of MA30` : `❌ 還差 $${distMA30.toFixed(2)} — 需進入 MA30±$${(latestMA30 * PROX).toFixed(2)} 的範圍內`)
           }
           tip={isEN
-            ? `MA60 trigger zone: $${shortZoneLow.toFixed(2)} → $${shortZoneHigh.toFixed(2)}`
-            : `MA60 觸發區間：$${shortZoneLow.toFixed(2)} → $${shortZoneHigh.toFixed(2)}`}
+            ? `MA30 trigger zone: $${shortZoneLow.toFixed(2)} → $${shortZoneHigh.toFixed(2)}`
+            : `MA30 觸發區間：$${shortZoneLow.toFixed(2)} → $${shortZoneHigh.toFixed(2)}`}
           color="#ff1744"
           progress={shortProx}
           progressLabel={isEN
-            ? `Zone: $${shortZoneLow.toFixed(2)} ← MA60 → $${shortZoneHigh.toFixed(2)}`
-            : `觸發區：$${shortZoneLow.toFixed(2)} ← MA60 $${latestMA60.toFixed(2)} → $${shortZoneHigh.toFixed(2)}`}
+            ? `Zone: $${shortZoneLow.toFixed(2)} ← MA30 → $${shortZoneHigh.toFixed(2)}`
+            : `觸發區：$${shortZoneLow.toFixed(2)} ← MA30 $${latestMA30.toFixed(2)} → $${shortZoneHigh.toFixed(2)}`}
         />
         <CondRow
           ok={false}
@@ -206,8 +210,8 @@ function WaitCard({
       {/* ── Summary hint ── */}
       <div style={wS.hint}>
         {isEN
-          ? `💡 Currently ${longProx > shortProx ? 'closer to a BUY signal' : 'closer to a SELL signal'} — price is ${distMA20 < distMA60 ? `$${distMA20.toFixed(2)} from MA20` : `$${distMA60.toFixed(2)} from MA60`}.`
-          : `💡 目前${longProx > shortProx ? '較接近買入訊號' : '較接近賣出訊號'} — 現價距 ${distMA20 < distMA60 ? `MA20 還差 $${distMA20.toFixed(2)}` : `MA60 還差 $${distMA60.toFixed(2)}`}。`}
+          ? `💡 Currently ${longProx > shortProx ? 'closer to a BUY signal' : 'closer to a SELL signal'} — price is ${distMA5 < distMA30 ? `$${distMA5.toFixed(2)} from MA5` : `$${distMA30.toFixed(2)} from MA30`}.`
+          : `💡 目前${longProx > shortProx ? '較接近買入訊號' : '較接近賣出訊號'} — 現價距 ${distMA5 < distMA30 ? `MA5 還差 $${distMA5.toFixed(2)}` : `MA30 還差 $${distMA30.toFixed(2)}`}。`}
       </div>
     </div>
   );
@@ -364,11 +368,12 @@ function GuideItem({ tag, tagColor, children }: { tag: string; tagColor: string;
 }
 
 // ─── Main Export ───────────────────────────────────────────────────────────────
-export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang, candles }: Props) {
-  const latestMA20 = ma20[ma20.length - 1]?.value ?? null;
-  const latestMA60 = ma60[ma60.length - 1]?.value ?? null;
+export default function SignalPanel({ signal, ma5, ma30, ma150, lastPrice, lang, candles, ma1Period = 5, ma2Period = 30, ma3Period = 150 }: Props) {
+  const latestMA5 = ma5[ma5.length - 1]?.value ?? null;
+  const latestMA30 = ma30[ma30.length - 1]?.value ?? null;
+  const latestMA150 = ma150[ma150.length - 1]?.value ?? null;
   const isEN = lang === 'EN';
-  const isBull = lastPrice && latestMA20 ? lastPrice > latestMA20 : null;
+  const isBull = lastPrice && latestMA30 ? lastPrice > latestMA30 : null;
 
   return (
     <div style={styles.panel}>
@@ -383,18 +388,24 @@ export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang, candl
         <StatCard label={isEN ? 'Current Price' : '現價 (USDT)'} value={`$${lastPrice?.toFixed(2) ?? '---'}`} color="#f0b90b"
           tip={isEN ? 'Live market price, updates every 10 seconds.' : '即時市場價格，每10秒自動更新。'}
           sub={isEN ? 'Updates every 10s' : '每10秒更新'} />
-        <StatCard label="MA20" value={`$${latestMA20?.toFixed(2) ?? '---'}`} color="#29b6f6"
-          tip={isEN ? 'Average of last 20 candles. Short-term trend. Price above = bullish.' : '最近20根K線均值，短期趨勢。現價在上 = 多頭。'}
-          sub={isEN ? 'Short-term avg' : '短期均線'} />
-        <StatCard label="MA60" value={`$${latestMA60?.toFixed(2) ?? '---'}`} color="#ab47bc"
-          tip={isEN ? 'Average of last 60 candles. Big-picture trend. Price below = bearish.' : '最近60根K線均值，長期趨勢。現價在下 = 空頭。'}
-          sub={isEN ? 'Long-term avg' : '長期均線'} />
+        <StatCard label={`MA${ma1Period}`} value={`$${latestMA5?.toFixed(2) ?? '---'}`} color="#2196f3"
+          tip={isEN ? `Average of last ${ma1Period} candles. Short-term entry zone.` : `最近${ma1Period}根K線均值，短期入場區間。`}
+          sub={isEN ? 'Fast MA' : '快速均線'} />
+        <StatCard label={`MA${ma2Period}`} value={`$${latestMA30?.toFixed(2) ?? '---'}`} color="#ff9800"
+          tip={isEN ? `Average of last ${ma2Period} candles. Trend anchor.` : `最近${ma2Period}根K線均值，趨勢錨點。`}
+          sub={isEN ? 'Trend MA' : '趨勢均線'} />
+        <StatCard
+          label={`MA${ma3Period}`}
+          value={`$${latestMA150?.toFixed(2) ?? '---'}`}
+          color="#ab47bc"
+          tip={isEN ? `Average of last ${ma3Period} candles. Macro regime filter.` : `最近${ma3Period}根K線均值，宏觀制度過濾。`}
+          sub={isEN ? 'Macro MA' : '宏觀均線'} />
         <StatCard
           label={isEN ? 'Trend' : '趨勢'}
           value={isBull === null ? '---' : isBull ? (isEN ? '⬆ Bullish' : '⬆ 多頭') : (isEN ? '⬇ Bearish' : '⬇ 空頭')}
           color={isBull === null ? '#888' : isBull ? '#00c853' : '#ff1744'}
-          tip={isEN ? 'Bullish = price above MA20 (boat on water). Bearish = price below (boat sinking).' : '多頭 = 價格浮在MA20上如船在水面；空頭 = 沉在線下。'}
-          sub={isEN ? 'Price vs MA20' : '現價 vs MA20'} />
+          tip={isEN ? `Bullish = price above MA${ma2Period} (boat on water). Bearish = price below (boat sinking).` : `多頭 = 價格浮在MA${ma2Period}上如船在水面；空頭 = 沉在線下。`}
+          sub={isEN ? `Price vs MA${ma2Period}` : `現價 vs MA${ma2Period}`} />
       </div>
 
       {/* Signal or Wait */}
@@ -418,19 +429,19 @@ export default function SignalPanel({ signal, ma20, ma60, lastPrice, lang, candl
             </div>
             <div style={styles.levelsRow}>
               <LevelBadge icon="📍" label={isEN ? 'Entry' : '入場'} value={`$${signal.price.toFixed(2)}`} color="#f0b90b"
-                tip={isEN ? 'Suggested entry price when signal triggered' : '訊號觸發時的建議入場價格'} />
+                tip={isEN ? 'Entry price when signal triggered' : '訊號觸發時的入場價格'} />
               <LevelBadge icon="🛑" label={isEN ? 'Stop Loss' : '止蝕'}
-                value={`$${(signal.type === 'LONG' ? signal.price * 0.99 : signal.price * 1.01).toFixed(2)}`} color="#ff5252"
-                tip={isEN ? 'Exit here if trade goes wrong. Limits your loss to ~1%.' : '交易出錯時在此離場，損失限制在約1%。'} />
+                value={`$${signal.sl.toFixed(2)}`} color="#ff5252"
+                tip={isEN ? 'Exit here if trade goes wrong. Structure-based dynamic SL from swing low.' : '交易出錯時在此離場。動態止蝕基於擺動低點。'} />
               <LevelBadge icon="🎯" label={isEN ? 'Take Profit' : '止盈'}
-                value={`$${(signal.type === 'LONG' ? signal.price * 1.03 : signal.price * 0.97).toFixed(2)}`} color="#00c853"
-                tip={isEN ? 'Target exit. Profit = 3× stop loss distance.' : '目標離場。利潤 = 止蝕距離的3倍。'} />
+                value={`$${signal.tp.toFixed(2)}`} color="#00c853"
+                tip={isEN ? 'Target exit. Profit = 3× stop loss distance (risk:reward ~3:1).' : '目標離場。利潤 = 止蝕距離的3倍（風險報酬比 ~3:1）。'} />
               <LevelBadge icon="⚖️" label={isEN ? 'R:R Ratio' : '盈虧比'} value="3 : 1" color="#f0b90b"
                 tip={isEN ? 'Risk $1 to make $3. Works long-term even at 40% win rate.' : '冒$1賺$3。即使40%勝率長期仍盈利。'} />
             </div>
           </div>
         ) : (
-          <WaitCard lastPrice={lastPrice} latestMA20={latestMA20} latestMA60={latestMA60} isEN={isEN} />
+          <WaitCard lastPrice={lastPrice} latestMA5={latestMA5} latestMA30={latestMA30} isEN={isEN} />
         )}
       </div>
 
