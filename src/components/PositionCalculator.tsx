@@ -8,7 +8,7 @@
 import React, { useState, useMemo } from 'react';
 import { SignalEvent } from '../types/binance';
 import { TradeRecord } from '../types/trade';
-import { FutuSymbol, CONTRACT_SPECS, ContractSpec } from '../types/futu';
+import { HKTicker, CONTRACT_SPECS, ContractSpec } from '../types/hkmarket';
 import { Lang, tr } from '../i18n';
 
 interface Props {
