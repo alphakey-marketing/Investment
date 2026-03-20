@@ -18,7 +18,9 @@ import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = process.env.PORT ?? process.env.PROXY_PORT ?? 3001;
+// In Replit production, PORT is set to 5000 automatically
+// In development, use 3001 if PROXY_PORT is not set
+const PORT = process.env.PORT ?? (process.env.NODE_ENV === 'production' ? 5000 : (process.env.PROXY_PORT ?? 3001));
 
 // ── D2: CORS ─────────────────────────────────────────────────────────────────────────────
 // Allow all origins in Replit (origin is dynamic per repl URL).
