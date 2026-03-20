@@ -9,10 +9,12 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 5173,
-    strictPort: false,
+    port: 5000,
+    strictPort: true,
     hmr: {
-      clientPort: 443,
+      host: 'localhost',
+      protocol: 'ws',
+      port: 5000,
     },
     allowedHosts: [
       'localhost',

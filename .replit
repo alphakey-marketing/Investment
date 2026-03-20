@@ -15,7 +15,11 @@ build = ["npm", "run", "build"]
 publicDir = "dist"
 
 [[ports]]
-localPort = 5173
+localPort = 3001
+externalPort = 3003
+
+[[ports]]
+localPort = 5000
 externalPort = 80
 
 [[ports]]
@@ -28,3 +32,27 @@ externalPort = 3001
 
 [agent]
 expertMode = true
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "./start-app.sh"
+waitForPort = 5000
