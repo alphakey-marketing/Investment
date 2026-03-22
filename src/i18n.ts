@@ -185,6 +185,26 @@ export const t = {
   swingHH:         { ZH: '更高高點 HH',                         EN: 'Higher High (HH)' },
   swingLL:         { ZH: '更低低點 LL',                         EN: 'Lower Low (LL)' },
   kmaV2Badge:      { ZH: '⚡ K均 v2',                           EN: '⚡ KMA v2' },
+
+  // ── App.tsx UI strings ────────────────────────────────────────────────────
+  rmTitle:             { ZH: '🗺️ 新手四步入門路線圖',                                         EN: '🗺️ Your 4-Step Beginner Roadmap' },
+  rmDismiss:           { ZH: '關閉',                                                           EN: 'Dismiss' },
+  rmAllDone:           { ZH: '🎉 全部完成！你已準備好自信交易。',                              EN: '🎉 All steps done! You are ready to trade with confidence.' },
+  chartSource60s:      { ZH: '🟡 Yahoo Finance · 60秒更新',                                   EN: '🟡 Yahoo Finance · 60s refresh' },
+  chartSourceProxy:    { ZH: '🟡 Yahoo Finance · 經伺服器代理 · 每60秒更新',                  EN: '🟡 Yahoo Finance · via server proxy · updates every 60s' },
+  chartSourceConnect:  { ZH: '⏳ 連接中…',                                                    EN: '⏳ Connecting…' },
+  onboardTitle:        { ZH: '🥇 歡迎使用黃金ETF K均訊號系統！',                              EN: '🥇 Welcome to HK Gold ETF Signal Trader!' },
+  onboardDesc:         { ZH: '透過 Yahoo Finance 分析價値黃金ETF (3081.HK)。訊號警報發送至 Telegram 與電郵。', EN: 'Analyse Value Gold ETF (3081.HK) on HKEX via Yahoo Finance. Signal alerts via Telegram & Email.' },
+  showRoadmap:         { ZH: '🗺️ 顯示路線圖',                                                EN: '🗺️ Show Roadmap' },
+  signalActive:        { ZH: '有訊號',                                                         EN: 'Signal Active' },
+  emailSendingBadge:   { ZH: '📧 發送中…',                                                    EN: '📧 Sending…' },
+  emailOnBadge:        { ZH: '📧 電郵開啟',                                                   EN: '📧 Email ON' },
+  chartFailed:         { ZH: '圖表載入失敗',                                                   EN: 'Chart failed to load' },
+  chartLoading:        { ZH: '載入圖表數據中…',                                               EN: 'Loading chart data…' },
+  chartError:          { ZH: '圖表載入失敗 — 請檢查 Replit 伺服器是否運行中',                  EN: 'Could not load chart — check server is running on Replit' },
+  dataError:           { ZH: '數据錯誤',                                                       EN: 'Data error' },
+  footerDisclaimer:    { ZH: '⚠️ 僅供參考，非投資建議。',                                     EN: '⚠️ For reference only. Not financial advice.' },
+  sym3081:             { ZH: '🥇 價値黃金ETF',                                               EN: '🥇 Value Gold ETF' },
 };
 
 export type TKey = keyof typeof t;

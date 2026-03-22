@@ -3,6 +3,7 @@ import { PaperAccount } from '../types/mode';
 import { KMASignalEvent } from '../types/binance';
 import { HKTicker, CONTRACT_SPECS, ContractSpec } from '../types/hkmarket';
 import { Lang, tr } from '../i18n';
+import Field from './Field';
 
 interface Props {
   account:  PaperAccount;
@@ -367,15 +368,6 @@ function HowToStep({ num, color, title, desc }: { num: string; color: string; ti
         <div style={{ fontSize: '0.8rem', color, fontWeight: 'bold', marginBottom: 2 }}>{title}</div>
         <div style={{ fontSize: '0.74rem', color: '#777', lineHeight: 1.6 }}>{desc}</div>
       </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: '0.68rem', color: '#555', fontFamily: 'monospace' }}>{label}</span>
-      {children}
     </div>
   );
 }
