@@ -1,3 +1,14 @@
+/**
+ * SignalBeginnerGuide.tsx — K均交易法 v2
+ *
+ * Previously described the old MA20/MA60 strategy with fixed 1% SL,
+ * 3% TP and 3:1 R:R. Updated to reflect v2 logic:
+ *   - Triple MA stack (MA5/MA30/MA150)
+ *   - HH/LL swing point breakout entry
+ *   - Structure-based dynamic stop loss (placed at swing low/high)
+ *   - NO fixed take profit — trailing stop only
+ *   - Minimum 2.5:1 R:R, unlimited upside
+ */
 import React, { useState } from 'react';
 import { Lang } from '../i18n';
 
@@ -13,56 +24,110 @@ export default function BeginnerGuide({ lang }: { lang: Lang }) {
       </button>
       {open && (
         <div style={guide.body}>
+
+          {/* ── What is this app ── */}
           <Section color="#f0b90b" title={isEN ? '🗺️ What is this app?' : '🗺️ 這個 App 是什麼？'}>
             <p style={guide.p}>
               {isEN
-                ? 'A traffic light for trading. It watches Gold / BTC / ETH around the clock and alerts you when rule-based conditions are met to BUY or SELL.'
-                : '一個交易用的交通燈號系統。全天候監測黃金/BTC/ETH，在規則條件滿足時提示你買入或賣出。'}
+                ? 'A rule-based signal system for Hong Kong ETFs and futures. It monitors the market and alerts you when all 5 entry conditions are met simultaneously based on the K均交易法 v2 strategy.'
+                : '一個基於規則的香港 ETF 及期貨訊號系統。全天候監測市場，當所有 5 個入場條件同時達成時發出提示，基於「K均交易法 v2」策略。'}
             </p>
             <p style={guide.p}>{isEN ? '⚠️ It shows signals only — it does NOT place trades for you.' : '⚠️ 只顯示訊號，不會自動下單。'}</p>
           </Section>
 
+          {/* ── Dashboard numbers ── */}
           <Section color="#29b6f6" title={isEN ? '📊 Dashboard numbers explained' : '📊 面板數字說明'}>
             <GuideItem tag={isEN ? 'Current Price' : '現價'} tagColor="#f0b90b">
-              {isEN ? 'The live price right now, updated every 10 seconds. Like the price tag on a shelf.' : '即時市場價格，每10秒更新。就像貨架上的標價貼，隨時在變。'}
+              {isEN ? 'The live price right now, updated every 10 seconds.' : '即時市場價格，每10秒更新。'}
             </GuideItem>
-            <GuideItem tag="MA20" tagColor="#29b6f6">
-              {isEN ? 'Average of last 20 candle closes — the market\'s "recent mood". Above it = bullish.' : '最近20根K線收盤均值——市場的「近期情緒」。現價在上 = 多頭。'}
+            <GuideItem tag="MA5" tagColor="#2196f3">
+              {isEN
+                ? 'Average of last 5 candles — the fastest line. When it\'s above MA30 and MA150, short-term momentum is bullish.'
+                : '最近5根K線均值——最快的均線。當它高於 MA30 和 MA150 時，短期動能為多頭。'}
             </GuideItem>
-            <GuideItem tag="MA60" tagColor="#ab47bc">
-              {isEN ? 'Average of last 60 candles — big-picture direction. Below it = bearish.' : '最近60根K線均值——大方向趨勢。現價在下 = 空頭。'}
+            <GuideItem tag="MA30" tagColor="#ff9800">
+              {isEN
+                ? 'Average of last 30 candles — the entry anchor. The signal fires when price is near this line (within 0.8%). Think of it as dynamic support (LONG) or resistance (SHORT).'
+                : '最近30根K線均值——入場錨點。價格靠近此線（0.8%以內）時才觸發訊號。可理解為動態支撐（做多）或壓力（做空）。'}
             </GuideItem>
-            <GuideItem tag={isEN ? 'Trend' : '趨勢'} tagColor="#888">
-              {isEN ? 'Bullish = price above MA20 (boat on water). Bearish = price below (boat sinking).' : '多頭 = 價格浮在MA20上（船在水面）。空頭 = 價格沉在線下（船沉水底）。'}
+            <GuideItem tag="MA150" tagColor="#ab47bc">
+              {isEN
+                ? 'Average of last 150 candles — the macro trend filter. No trades are ever taken against it. MA5 > MA30 > MA150 = BULL trend only.'
+                : '最近150根K線均值——宏觀趨勢過濾器。永遠不逆此線交易。MA5 > MA30 > MA150 = 只做多。'}
+            </GuideItem>
+            <GuideItem tag={isEN ? 'MA Stack' : '均線堆疊'} tagColor="#888">
+              {isEN
+                ? 'BULL = MA5 > MA30 > MA150 (long only). BEAR = MA5 < MA30 < MA150 (short only). RANGE = mixed, no trades.'
+                : '多頭 = MA5 > MA30 > MA150（只做多）。空頭 = MA5 < MA30 < MA150（只做空）。橫盤 = 混亂，不交易。'}
             </GuideItem>
           </Section>
 
-          <Section color="#00c853" title={isEN ? '🚦 What triggers a signal?' : '🚦 什麼情況會觸發訊號？'}>
-            <GuideItem tag={isEN ? '🟢 BUY' : '🟢 買入'} tagColor="#00c853">
-              {isEN ? 'Price is above MA20 + within 0.5% of MA20 + current candle makes a new high. All 3 together = green light.' : '現價在MA20上方 + 距MA20在0.5%以內 + 本根K線創新高。三個同時滿足 = 綠燈。'}
+          {/* ── What triggers a signal ── */}
+          <Section color="#00c853" title={isEN ? '🚦 What triggers a signal? (5 gates, all must pass)' : '🚦 什麼情況會觸發訊號？（5個條件，全部達成）'}>
+            <GuideItem tag={isEN ? 'Gate 1' : '條件1'} tagColor="#29b6f6">
+              {isEN
+                ? 'HKEX session is open (09:15–12:00 or 13:00–16:30 HKT, weekdays). No signals fire outside trading hours.'
+                : '港交所交易時段（週一至五 09:15–12:00 或 13:00–16:30 港時）。收市後不發訊號。'}
             </GuideItem>
-            <GuideItem tag={isEN ? '🔴 SELL' : '🔴 賣出'} tagColor="#ff1744">
-              {isEN ? 'Price is below MA60 + within 0.5% of MA60 + current candle makes a new low. All 3 together = red light.' : '現價在MA60下方 + 距MA60在0.5%以內 + 本根K線創新低。三個同時滿足 = 紅燈。'}
+            <GuideItem tag={isEN ? 'Gate 2' : '條件2'} tagColor="#ab47bc">
+              {isEN
+                ? 'Triple MA stack is clean: BULL (MA5 > MA30 > MA150) for LONG, or BEAR (MA5 < MA30 < MA150) for SHORT. RANGE = no trade.'
+                : '三線堆疊乾淨：多頭（MA5 > MA30 > MA150）做多；空頭（MA5 < MA30 < MA150）做空。橫盤不交易。'}
             </GuideItem>
-            <GuideItem tag={isEN ? '⏳ Waiting' : '⏳ 等待'} tagColor="#888">
-              {isEN ? 'Not all 3 conditions are met yet. The checklist above shows exactly how far away each condition is in real dollars.' : '3個條件未同時滿足。上方的條件清單會實時顯示每個條件距離觸發還差多少美元。'}
+            <GuideItem tag={isEN ? 'Gate 3' : '條件3'} tagColor="#f0b90b">
+              {isEN
+                ? 'The latest confirmed swing high is a Higher High (HH) — it is above the previous swing high. This confirms the market is genuinely making upward progress, not just noise.'
+                : '最新確認的前高是「更高前高」（Higher High）——高於上一個前高。這確認市場真正在向上推進，而非橫盤噪音。'}
+            </GuideItem>
+            <GuideItem tag={isEN ? 'Gate 4' : '條件4'} tagColor="#00c853">
+              {isEN
+                ? 'Price has just closed above that swing high — the breakout is confirmed. Entry is on the breakout candle itself, never before.'
+                : '價格剛剛收盤突破了那個前高——突破確認。在突破的那根K線入場，絕不提前。'}
+            </GuideItem>
+            <GuideItem tag={isEN ? 'Gate 5' : '條件5'} tagColor="#ff9800">
+              {isEN
+                ? 'Price is still within 0.8% of MA30 at the time of breakout. This ensures you\'re not chasing a runaway move — entry stays near the trend anchor.'
+                : '突破時價格仍在 MA30 的 0.8% 範圍內。確保不追高——入場點維持在趨勢錨點附近。'}
             </GuideItem>
           </Section>
 
-          <Section color="#ff9800" title={isEN ? '💰 Stop Loss & Take Profit' : '💰 止蝕 & 止盈'}>
-            <GuideItem tag={isEN ? '🛑 Stop Loss' : '🛑 止蝕'} tagColor="#ff1744">
-              {isEN ? 'Auto-exit if price moves against you by 1%. Like an insurance policy — small fixed cost to avoid a big disaster.' : '若價格反向移動1%自動離場。就像保險——付小額保費防大損失。'}
+          {/* ── Stop Loss ── */}
+          <Section color="#ff9800" title={isEN ? '🛑 Stop Loss — structure-based, dynamic' : '🛑 止損——結構性，動態設置'}>
+            <GuideItem tag={isEN ? 'Initial SL' : '初始止損'} tagColor="#ff5252">
+              {isEN
+                ? 'Placed at the most recent confirmed swing LOW (for LONG). This is the price level where the bullish structure is proven wrong — not an arbitrary percentage.'
+                : '置於最近確認的前低（做多時）。這是多頭結構被否定的價格水平——不是隨意的百分比。'}
             </GuideItem>
-            <GuideItem tag={isEN ? '🎯 Take Profit' : '🎯 止盈'} tagColor="#00c853">
-              {isEN ? 'Target exit at +3% profit. You aim to earn 3× what you risk.' : '目標在+3%利潤離場。目標是賺取風險的3倍。'}
+            <GuideItem tag={isEN ? 'Trailing SL' : '跟隨止損'} tagColor="#29b6f6">
+              {isEN
+                ? 'As new higher swing lows form above your initial stop, your stop moves up — locking in more profit over time. You never manually move it down.'
+                : '隨著新的更高前低出現在初始止損之上，止損自動上移——逐步鎖定更多利潤。永遠不要手動向下移動止損。'}
             </GuideItem>
-            <GuideItem tag={isEN ? '⚖️ R:R 3:1' : '⚖️ 盈虧比 3:1'} tagColor="#f0b90b">
-              {isEN ? 'For every $1 risked, target $3 profit. Even with only 40% wins, you\'re profitable long-term.' : '每冒$1風險，目標賺$3。即使只有40%勝率，長期仍盈利。'}
+            <GuideItem tag={isEN ? 'When to exit' : '何時離場'} tagColor="#888">
+              {isEN
+                ? 'Exit ONLY when the trailing stop is hit. There is no fixed take-profit level. The market decides when your trade is over.'
+                : '只在跟隨止損被觸及時離場。沒有固定止盈。市場決定交易何時結束。'}
+            </GuideItem>
+          </Section>
+
+          {/* ── R:R ── */}
+          <Section color="#f0b90b" title={isEN ? '⚖️ Risk : Reward — minimum 2.5:1, no upper limit' : '⚖️ 風險報酬比——最低 2.5:1，無上限'}>
+            <GuideItem tag={isEN ? 'Minimum R:R' : '最低盈虧比'} tagColor="#f0b90b">
+              {isEN
+                ? 'The SL distance × 2.5 gives you the minimum profit target. But because there is no fixed TP, the trade stays open as long as the trend holds — the actual R:R could be 5:1, 8:1 or more.'
+                : '止損距離 × 2.5 得出最低利潤目標。但因為沒有固定止盈，交易在趨勢持續時一直持有——實際盈虧比可能達 5:1、8:1 甚至更高。'}
+            </GuideItem>
+            <GuideItem tag={isEN ? 'Why no fixed TP?' : '為什麼沒有固定止盈？'} tagColor="#00c853">
+              {isEN
+                ? 'Cutting winners early is the most common trading mistake. A trending market can run 10× your stop distance. Fixing a TP at 2.5× means you miss 90% of the move.'
+                : '過早鎖利是最常見的交易錯誤。趨勢市場的移動幅度可達止損距離的10倍。設定 2.5× 的固定止盈意味著你錯過了90%的行情。'}
             </GuideItem>
           </Section>
 
           <div style={{ background: '#1a1500', border: '1px solid #f0b90b44', borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem', color: '#f0b90b', lineHeight: 1.7 }}>
-            {isEN ? '⚠️ For educational reference only. Not financial advice. Always practice with Paper Trading before using real money.' : '⚠️ 僅供教學參考，非投資建議。使用真實資金前請先在模擬盤充分練習。'}
+            {isEN
+              ? '⚠️ For educational reference only. Not financial advice. Always practice with Paper Trading before using real money.'
+              : '⚠️ 僅供教學參考，非投資建議。使用真實資金前請先在模擬盤充分練習。'}
           </div>
         </div>
       )}
@@ -90,7 +155,7 @@ function GuideItem({ tag, tagColor, children }: { tag: string; tagColor: string;
 
 const guide: Record<string, React.CSSProperties> = {
   wrapper: {},
-  toggle: { width: '100%', background: '#16161e', border: '1px solid #2a2a3e', color: '#888', padding: '10px 14px', borderRadius: 8, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.82rem', display: 'flex', gap: 8, alignItems: 'center', textAlign: 'left' },
-  body: { background: '#0d0d1e', border: '1px solid #2a2a3e', borderTop: 'none', borderRadius: '0 0 10px 10px', padding: '18px', display: 'flex', flexDirection: 'column', gap: 18 },
-  p: { margin: '0 0 4px', fontSize: '0.8rem', color: '#aaa', lineHeight: 1.7 },
+  toggle:  { width: '100%', background: '#16161e', border: '1px solid #2a2a3e', color: '#888', padding: '10px 14px', borderRadius: 8, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.82rem', display: 'flex', gap: 8, alignItems: 'center', textAlign: 'left' },
+  body:    { background: '#0d0d1e', border: '1px solid #2a2a3e', borderTop: 'none', borderRadius: '0 0 10px 10px', padding: '18px', display: 'flex', flexDirection: 'column', gap: 18 },
+  p:       { margin: '0 0 4px', fontSize: '0.8rem', color: '#aaa', lineHeight: 1.7 },
 };

@@ -9,6 +9,9 @@ import { useTradeJournal } from './hooks/useTradeJournal';
 import { usePaperTrading } from './hooks/usePaperTrading';
 import { calculateSMA } from './utils/ma';
 import { detectSignal } from './utils/signal';
+import { getMATrend } from './utils/maTrend';
+import { findSwingPoints, getLatestSwings } from './utils/swingPoints';
+import { isHKTradingHours, isHKWeekend } from './utils/hkSession';
 import ModeBar from './components/ModeBar';
 import ControlBar from './components/ControlBar';
 import KlineChart from './components/KlineChart';
@@ -30,7 +33,7 @@ import {
 } from './constants';
 import './App.css';
 
-// ─── Beginner Roadmap ───────────────────────────────────────────────────────────────────────────────────────────────────────
+// ─── Beginner Roadmap ────────────────────────────────────────────────────────
 function BeginnerRoadmap({ lang, onDismiss }: { lang: Lang; onDismiss: () => void }) {
   const isEN = lang === 'EN';
   const [done, setDone] = React.useState<Record<number, boolean>>(() => {
@@ -99,9 +102,8 @@ const rmStyles: Record<string, React.CSSProperties> = {
   stepNum:  { flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
 };
 
-// ─── Data source badge sub-component ────────────────────────────────────────────────────────────────────────────────────
+// ─── Data source badge ───────────────────────────────────────────────────────
 function ChartSourceBadge({ source, lang }: { source: 'yahoo' | null; lang: Lang }) {
-  const isEN = lang === 'EN';
   if (!source) return null;
   return (
     <div style={{
@@ -117,7 +119,7 @@ function ChartSourceBadge({ source, lang }: { source: 'yahoo' | null; lang: Lang
   );
 }
 
-// ─── Main App ───────────────────────────────────────────────────────────────────────────────────────────────────
+// ─── Main App ────────────────────────────────────────────────────────────────
 export default function App() {
   const [state, actions] = useAppState();
   const { mode, lang, symbol, klineInterval, ma1Period, ma2Period, ma3Period, showOnboard, showRoadmap, now } = state;
@@ -129,10 +131,37 @@ export default function App() {
   const isStale = lastUpdated !== null && (now - lastUpdated.getTime()) > STALE_THRESHOLD_MS;
   const secsSinceUpdate = lastUpdated ? Math.round((now - lastUpdated.getTime()) / 1000) : null;
 
-  const ma5 = calculateSMA(candles, ma1Period);
-  const ma30 = calculateSMA(candles, ma2Period);
+  const ma5   = calculateSMA(candles, ma1Period);
+  const ma30  = calculateSMA(candles, ma2Period);
   const ma150 = calculateSMA(candles, ma3Period);
   const signal = detectSignal(candles, ma1Period, ma2Period, ma3Period);
+
+  // ── Gate data for SignalPanel WaitCard ─────────────────────────────────────
+  // maStack: classified MA trend (BULL / BEAR / RANGE) — Gate 2
+  const maStack = candles.length > 155
+    ? getMATrend(candles, ma1Period, ma2Period, ma3Period)
+    : null;
+
+  // Exclude the latest 2 unconfirmed candles before computing swing points
+  // (a pivot needs 2 right-side bars to be confirmed — see swingPoints.ts)
+  const confirmedCandles = candles.length > 4 ? candles.slice(0, -2) : [];
+  const swings           = confirmedCandles.length > 10
+    ? findSwingPoints(confirmedCandles, 2)
+    : [];
+
+  // Latest 2 swing HIGHs (for Gate 3: HH check) and 2 LOWs (LL check)
+  const swingHighs = getLatestSwings(swings, 'HIGH', 2);
+  const swingLows  = getLatestSwings(swings, 'LOW',  2);
+
+  // Gate 1: is the market currently in a HKEX trading session?
+  const isInSession = candles.length > 0
+    ? (
+        isHKTradingHours(candles[candles.length - 1].time, false) &&
+        !isHKWeekend(candles[candles.length - 1].time)
+      )
+    : false;
+  // ───────────────────────────────────────────────────────────────────────────
+
   const { history, clearHistory } = useSignalHistory(signal);
   const { config, saveConfig, sendMessage, testSend, sending, lastStatus } = useTelegram();
   const { emailConfig, saveEmailConfig, sendEmail, testEmail, emailSending, emailStatus } = useEmail();
@@ -152,7 +181,7 @@ export default function App() {
     setKlineInterval(i.toLowerCase() as any);
   };
 
-  // ── Signal notifications ──────────────────────────────────────────────────────────────────────
+  // ── Signal notifications ──────────────────────────────────────────────────
   useEffect(() => {
     if (mode !== 'LIVE' || !signal) return;
     if (lastNotifiedRef.current === signal.time) return;
@@ -199,7 +228,7 @@ export default function App() {
     if (Notification.permission === 'default') Notification.requestPermission();
   }, []);
 
-  // ── Banner text ───────────────────────────────────────────────────────────────────────────────
+  // ── Banner text ───────────────────────────────────────────────────────────
   const dataSourceBanner = isStale
     ? (isEN ? `🔴 STALE — last update ${secsSinceUpdate}s ago. Check server connection.`
             : `🔴 數据已過時 — 最後更新於 ${secsSinceUpdate} 秒前。請檢查服務器連接。`)
@@ -211,7 +240,6 @@ export default function App() {
   const bannerBackground = isStale ? '#2a0000' : dataSource === 'yahoo' ? '#1a1500'   : '#0f0f1a';
   const bannerBorder     = isStale ? '#ff174422' : dataSource === 'yahoo' ? '#f0b90b22' : '#2a2a3e';
 
-  // ── Chart: show KlineChart when we have candles, loading skeleton when not ──────────────────────
   const showChart = candles.length > 0;
 
   return (
@@ -229,12 +257,8 @@ export default function App() {
           <div style={styles.onboardInner}>
             <div style={styles.onboardIcon}>👋</div>
             <div style={{ flex: 1 }}>
-              <div style={styles.onboardTitle}>
-                {tr('onboardTitle', lang)}
-              </div>
-              <div style={styles.onboardDesc}>
-                {tr('onboardDesc', lang)}
-              </div>
+              <div style={styles.onboardTitle}>{tr('onboardTitle', lang)}</div>
+              <div style={styles.onboardDesc}>{tr('onboardDesc', lang)}</div>
             </div>
             <button onClick={dismissOnboard} style={styles.onboardClose}>✕</button>
           </div>
@@ -333,7 +357,7 @@ export default function App() {
         ) : null}
       </div>
 
-      {/* Status / loading cards for signal engine */}
+      {/* Loading / error status cards */}
       {loading && candles.length === 0 && (
         <div style={styles.statusCard}>
           <span style={{ fontSize: '1.2rem' }}>⏳</span>
@@ -347,11 +371,27 @@ export default function App() {
         </div>
       )}
 
+      {/* ── LIVE mode ── */}
       {mode === 'LIVE' && !loading && !error && (
         <>
           <ErrorBoundary fallback="Signal panel failed">
             <div id="signal-panel">
-              <SignalPanel signal={signal} ma5={ma5} ma30={ma30} ma150={ma150} lastPrice={lastPrice} lang={lang} candles={candles} ma1Period={ma1Period} ma2Period={ma2Period} ma3Period={ma3Period} />
+              <SignalPanel
+                signal={signal}
+                ma5={ma5}
+                ma30={ma30}
+                ma150={ma150}
+                lastPrice={lastPrice}
+                lang={lang}
+                candles={candles}
+                ma1Period={ma1Period}
+                ma2Period={ma2Period}
+                ma3Period={ma3Period}
+                maStack={maStack}
+                isInSession={isInSession}
+                swingHighs={swingHighs}
+                swingLows={swingLows}
+              />
             </div>
           </ErrorBoundary>
           <ErrorBoundary fallback="Calculator failed">
@@ -374,6 +414,7 @@ export default function App() {
         </>
       )}
 
+      {/* ── PAPER mode ── */}
       {mode === 'PAPER' && !loading && !error && (
         <>
           <ErrorBoundary fallback="Paper panel failed">
@@ -392,6 +433,7 @@ export default function App() {
         </>
       )}
 
+      {/* ── BACKTEST mode ── */}
       {mode === 'BACKTEST' && (
         <ErrorBoundary fallback="Backtest failed">
           <BacktestPanel candles={candles} ma1Period={ma1Period} ma2Period={ma2Period} ma3Period={ma3Period} symbol={symbol} lang={lang} />

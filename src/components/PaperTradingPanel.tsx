@@ -6,16 +6,16 @@ import { Lang, tr } from '../i18n';
 import Field from './Field';
 
 interface Props {
-  account:  PaperAccount;
-  signal:   KMASignalEvent | null;
+  account:   PaperAccount;
+  signal:    KMASignalEvent | null;
   lastPrice: number | null;
-  symbol:   string;
-  pnl:      number;
-  pnlPct:   number;
-  lang:     Lang;
-  onOpen:   (symbol: string, type: 'LONG'|'SHORT', price: number, capital: number, sl: number, tp: number) => void;
-  onClose:  (exitPrice: number) => void;
-  onReset:  (balance?: number) => void;
+  symbol:    string;
+  pnl:       number;
+  pnlPct:    number;
+  lang:      Lang;
+  onOpen:    (symbol: string, type: 'LONG'|'SHORT', price: number, capital: number, sl: number, tp: number) => void;
+  onClose:   (exitPrice: number) => void;
+  onReset:   (balance?: number) => void;
 }
 
 export default function PaperTradingPanel({
@@ -37,25 +37,21 @@ export default function PaperTradingPanel({
   const price = parseFloat(manualEntry) || lastPrice || 0;
   const numContracts = Math.max(1, parseInt(contractsInput) || 1);
 
-  // Contract spec
   const spec: ContractSpec = CONTRACT_SPECS[symbol as HKTicker] ?? {
     multiplier: 1, tickSize: 0.1, currency: 'HKD', marginEstHKD: 0, isFutures: false,
   };
   const isFutures  = spec.isFutures;
   const multiplier = spec.multiplier;
 
-  // SL / TP defaults (tighter for futures)
   const slPct = isFutures ? 0.005 : 0.01;
   const tpPct = isFutures ? 0.015 : 0.03;
   const sl = parseFloat(manualSL) || (manualType === 'LONG' ? price * (1 - slPct) : price * (1 + slPct));
   const tp = parseFloat(manualTP) || (manualType === 'LONG' ? price * (1 + tpPct) : price * (1 - tpPct));
 
-  // Capital = contracts × margin (futures) or contracts × price (stocks)
   const capitalForOpen = isFutures
     ? numContracts * spec.marginEstHKD
     : numContracts * price;
 
-  // Unrealised P&L in HKD
   const unrealisedPnl = pos && lastPrice
     ? isFutures
       ? (pos.type === 'LONG'
@@ -68,7 +64,6 @@ export default function PaperTradingPanel({
 
   const handleOpenBySignal = () => {
     if (!signal) return;
-    // Use structure-based SL/TP from KMASignalEvent (v2) — not fixed fractions
     onOpen(symbol, signal.type, signal.price, capitalForOpen, signal.sl, signal.tp);
   };
 
@@ -78,6 +73,7 @@ export default function PaperTradingPanel({
 
   return (
     <div style={styles.wrapper}>
+
       {/* ── Account header ── */}
       <div style={styles.header}>
         <Item label={tr('paperCapital', lang)} value={`HK$${account.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
@@ -89,7 +85,7 @@ export default function PaperTradingPanel({
         />
         {isFutures && (
           <Item
-            label={isEN ? 'HKD/pt (per contract)' : '每點盈关(每張)'}
+            label={isEN ? 'HKD/pt (per contract)' : '每點盈虧(每張)'}
             value={`HK$${multiplier}`}
             color="#f0b90b"
           />
@@ -112,22 +108,24 @@ export default function PaperTradingPanel({
             <div style={styles.stepsCol}>
               <HowToStep num="1" color="#f0b90b"
                 title={isEN ? 'Go to Live mode and wait for a signal' : '切換到即時模式等待訊號'}
-                desc={isEN ? 'Watch for a 🟢 LONG or 🔴 SHORT signal on the Signal Panel.' : '觀察訊號面板，等待出現 🟢 做多 或 🔴 做空 訊號。'}
+                desc={isEN ? 'Watch for a 🟢 LONG or 🔴 SHORT signal — all 5 gates must pass simultaneously.' : '等待 🟢 做多 或 🔴 做空 訊號——5個條件必須同時達成。'}
               />
               <HowToStep num="2" color="#29b6f6"
                 title={isEN ? 'Set how many contracts, then Open by Signal' : '設定合約數量，然後依訊號開倉'}
                 desc={isEN
-                  ? `1 MHI contract = HK$${multiplier}/pt. Start with 1 contract. You only need HK$${spec.marginEstHKD.toLocaleString()} margin per contract.`
+                  ? `1 MHI contract = HK$${multiplier}/pt. Start with 1 contract. Margin required: ~HK$${spec.marginEstHKD.toLocaleString()} per contract.`
                   : `1張小恆指合約 = 每點 HK$${multiplier}。從1張開始。每張合約保證金約 HK$${spec.marginEstHKD.toLocaleString()}。`}
               />
-              <HowToStep num="3" color="#00c853"
-                title={isEN ? 'Watch unrealised P&L — close at S/L or T/P' : '觀察浮動盈关 — 在止蚁或止盈時平倉'}
+              {/* ── CHANGED Step 3: trailing stop instead of fixed T/P ── */}
+              <HowToStep num="3" color="#29b6f6"
+                title={isEN ? 'Hold and let the trailing stop protect your gains' : '持倉，讓跟隨止損保護你的利潤'}
                 desc={isEN
-                  ? 'The system warns you when price hits stop loss or take profit. Click Market Close to end the trade.'
-                  : '價格觸及止蚁或止盈時系統會提醒你。點擊「市價平倉」結束交易。'}
+                  ? 'There is NO fixed take profit. As new swing lows form above your stop, your stop moves up automatically. Exit ONLY when the stop is hit.'
+                  : '沒有固定止盈。隨著新前低出現在止損之上，止損自動上移。只有止損被觸及時才離場。'}
               />
             </div>
-            {/* MHI example */}
+
+            {/* ── CHANGED MHI example: trailing stop, not fixed TP ── */}
             <div style={styles.exampleBox}>
               <div style={{ fontSize: '0.78rem', color: '#f0b90b', fontWeight: 'bold', marginBottom: 6 }}>
                 {isEN ? '📐 MHI Example:' : '📐 小恆指例子：'}
@@ -135,21 +133,24 @@ export default function PaperTradingPanel({
               <div style={{ fontSize: '0.75rem', color: '#aaa', lineHeight: 1.8, fontFamily: 'monospace' }}>
                 {isEN ? (
                   <>
-                    Entry: <b style={{ color: '#fff' }}>20,000 pts</b> · S/L: <b style={{ color: '#ff5252' }}>19,900</b> · T/P: <b style={{ color: '#69f0ae' }}>20,300</b><br />
-                    Risk:  <b style={{ color: '#ff5252' }}>100 pts × HK$10 = HK$1,000/contract</b><br />
-                    Reward: <b style={{ color: '#69f0ae' }}>300 pts × HK$10 = HK$3,000/contract (3:1 R:R)</b><br />
+                    Entry: <b style={{ color: '#fff' }}>20,000 pts</b> · S/L at swing low: <b style={{ color: '#ff5252' }}>19,900</b><br />
+                    Risk: <b style={{ color: '#ff5252' }}>100 pts × HK$10 = HK$1,000/contract</b><br />
+                    <span style={{ color: '#29b6f6' }}>📈 Trailing stop moves up as new swing lows form</span><br />
+                    Min target (2.5× risk): <b style={{ color: '#69f0ae' }}>20,250 pts — but hold longer if trend continues</b><br />
                     Margin: <b style={{ color: '#f0b90b' }}>~HK$22,000 locked per contract</b>
                   </>
                 ) : (
                   <>
-                    入場：<b style={{ color: '#fff' }}>20,000點</b> · 止蚁：<b style={{ color: '#ff5252' }}>19,900</b> · 止盈：<b style={{ color: '#69f0ae' }}>20,300</b><br />
+                    入場：<b style={{ color: '#fff' }}>20,000點</b> · 止損置於前低：<b style={{ color: '#ff5252' }}>19,900</b><br />
                     風險：<b style={{ color: '#ff5252' }}>100點 × HK$10 = 每張HK$1,000</b><br />
-                    回報：<b style={{ color: '#69f0ae' }}>300點 × HK$10 = 每張HK$3,000（3:1風報比）</b><br />
+                    <span style={{ color: '#29b6f6' }}>📈 跟隨止損隨新前低自動上移</span><br />
+                    最低目標（2.5倍風險）：<b style={{ color: '#69f0ae' }}>20,250點——但如趨勢延續則繼續持倉</b><br />
                     保證金：<b style={{ color: '#f0b90b' }}>每張鎖定約HK$22,000</b>
                   </>
                 )}
               </div>
             </div>
+
             {!signal && (
               <div style={styles.waitBanner}>
                 <span style={{ fontSize: '1.2rem' }}>⏳</span>
@@ -158,7 +159,9 @@ export default function PaperTradingPanel({
                     {isEN ? "No signal right now — don't rush!" : '目前沒有訊號 — 不要急！'}
                   </div>
                   <div style={{ fontSize: '0.74rem', color: '#888', marginTop: 3 }}>
-                    {isEN ? 'Switch to Live mode and wait for a signal. Signals only fire during HKEX trading hours.' : '切換到即時模式等待訊號。訊號只在交易時段內出現。'}
+                    {isEN
+                      ? 'Switch to Live mode and wait for a signal. All 5 gates must be green at the same time.'
+                      : '切換到即時模式等待訊號。5個條件必須同時達成才觸發。'}
                   </div>
                 </div>
               </div>
@@ -175,7 +178,7 @@ export default function PaperTradingPanel({
             <div style={styles.signalHint}>
               🚦 {tr('signalHint', lang)}
               <span style={{ marginLeft: 8, color: '#888', fontSize: '0.72rem', fontFamily: 'monospace' }}>
-                SL={signal.sl.toFixed(3)} · TP={signal.tp.toFixed(3)} · {signal.trend === 'BULL' ? '🐂 BULL' : signal.trend === 'BEAR' ? '🐻 BEAR' : '〰 RANGE'}
+                SL={signal.sl.toFixed(3)} · {isEN ? 'No fixed TP (trailing stop)' : '無固定止盈（跟隨止損）'} · {signal.trend === 'BULL' ? '🐂 BULL' : signal.trend === 'BEAR' ? '🐻 BEAR' : '〰 RANGE'}
               </span>
             </div>
           )}
@@ -204,7 +207,7 @@ export default function PaperTradingPanel({
                   <span style={{ fontSize: '0.65rem', color: '#555', fontFamily: 'monospace' }}>
                     {isEN
                       ? `Margin locked: HK$${(numContracts * spec.marginEstHKD).toLocaleString()} · P&L: HK$${numContracts * multiplier}/pt`
-                      : `鎖定保證金：HK$${(numContracts * spec.marginEstHKD).toLocaleString()} · 每點盈关：HK$${numContracts * multiplier}`}
+                      : `鎖定保證金：HK$${(numContracts * spec.marginEstHKD).toLocaleString()} · 每點盈虧：HK$${numContracts * multiplier}`}
                   </span>
                 </>
               ) : (
@@ -225,10 +228,14 @@ export default function PaperTradingPanel({
                 placeholder={sl > 0 ? sl.toFixed(isFutures ? 0 : 2) : '---'} />
             </Field>
 
-            <Field label={tr('takeProfit', lang)}>
+            {/* ── CHANGED: label clarifies this is the minimum reference, not a fixed exit ── */}
+            <Field label={isEN ? 'Min target ref (2.5× risk)' : '最低目標參考（2.5倍風險）'}>
               <input style={styles.input} type="number" value={manualTP}
                 onChange={(e) => setManualTP(e.target.value)}
                 placeholder={tp > 0 ? tp.toFixed(isFutures ? 0 : 2) : '---'} />
+              <span style={{ fontSize: '0.65rem', color: '#29b6f6', fontFamily: 'monospace', marginTop: 2 }}>
+                {isEN ? '💡 No fixed TP — hold until trailing stop hit' : '💡 無固定止盈——持倉至跟隨止損觸發'}
+              </span>
             </Field>
           </div>
 
@@ -255,7 +262,7 @@ export default function PaperTradingPanel({
           )}
         </div>
       ) : (
-        // ── Open position display ────────────────────────────────────────────────────────────────────────────
+        // ── Open position display ──────────────────────────────────────────
         <div style={styles.form}>
           <div style={styles.formTitle}>
             <span style={{ color: pos.type === 'LONG' ? '#00c853' : '#ff1744' }}>
@@ -268,16 +275,25 @@ export default function PaperTradingPanel({
             )}
           </div>
           <div style={styles.posGrid}>
-            <PosItem label={isFutures ? (isEN ? 'Entry Level' : '入場點位') : tr('entryPrice', lang)}
-              value={isFutures ? `${pos.entryPrice.toFixed(0)} pts` : `HK$${pos.entryPrice.toFixed(2)}`} />
-            <PosItem label={isFutures ? (isEN ? 'Current Level' : '當前點位') : tr('currentPrice', lang)}
-              value={lastPrice != null ? (isFutures ? `${lastPrice.toFixed(0)} pts` : `HK$${lastPrice.toFixed(2)}`) : '---'} />
-            <PosItem label={`${tr('stopLoss', lang)} ${tr('dynamicSL', lang)}`}
+            <PosItem
+              label={isFutures ? (isEN ? 'Entry Level' : '入場點位') : tr('entryPrice', lang)}
+              value={isFutures ? `${pos.entryPrice.toFixed(0)} pts` : `HK$${pos.entryPrice.toFixed(2)}`}
+            />
+            <PosItem
+              label={isFutures ? (isEN ? 'Current Level' : '當前點位') : tr('currentPrice', lang)}
+              value={lastPrice != null ? (isFutures ? `${lastPrice.toFixed(0)} pts` : `HK$${lastPrice.toFixed(2)}`) : '---'}
+            />
+            <PosItem
+              label={`${tr('stopLoss', lang)} ${tr('dynamicSL', lang)}`}
               value={isFutures ? `${pos.stopLoss.toFixed(0)} pts` : `HK$${pos.stopLoss.toFixed(3)}`}
-              color="#ff174488" />
-            <PosItem label={`${tr('takeProfit', lang)} ${tr('dynamicTP', lang)}`}
+              color="#ff174488"
+            />
+            {/* ── CHANGED: "Take Profit (dynamic)" → "Trailing Stop Ref" ── */}
+            <PosItem
+              label={isEN ? '📈 Trailing Stop Ref' : '📈 跟隨止損參考'}
               value={isFutures ? `${pos.takeProfit.toFixed(0)} pts` : `HK$${pos.takeProfit.toFixed(3)}`}
-              color="#00c85388" />
+              color="#29b6f688"
+            />
             <PosItem
               label={isFutures ? (isEN ? 'Contracts' : '合約數') : (isEN ? 'Shares' : '股數')}
               value={isFutures ? `${pos.quantity} ${isEN ? 'contracts' : '張'}` : pos.quantity.toLocaleString()}
@@ -303,17 +319,28 @@ export default function PaperTradingPanel({
             </div>
           )}
 
+          {/* SL hit warning */}
           {lastPrice && lastPrice <= pos.stopLoss && pos.type === 'LONG' && (
             <div style={styles.warnHit}>{tr('slHitWarn', lang)}</div>
-          )}
-          {lastPrice && lastPrice >= pos.takeProfit && pos.type === 'LONG' && (
-            <div style={{ ...styles.warnHit, color: '#00c853' }}>{tr('tpHitHint', lang)}</div>
           )}
           {lastPrice && lastPrice >= pos.stopLoss && pos.type === 'SHORT' && (
             <div style={styles.warnHit}>{tr('slHitWarn', lang)}</div>
           )}
+
+          {/* ── CHANGED: trailing stop hint instead of TP hit message ── */}
+          {lastPrice && lastPrice >= pos.takeProfit && pos.type === 'LONG' && (
+            <div style={{ ...styles.warnHit, color: '#29b6f6', background: '#0d1a2e' }}>
+              {isEN
+                ? '📈 Price has passed the min target (2.5× risk). Consider whether a new swing low has formed to raise your trailing stop.'
+                : '📈 價格已超越最低目標（2.5倍風險）。考慮是否有新前低出現，可上移跟隨止損鎖定更多利潤。'}
+            </div>
+          )}
           {lastPrice && lastPrice <= pos.takeProfit && pos.type === 'SHORT' && (
-            <div style={{ ...styles.warnHit, color: '#00c853' }}>{tr('tpHitHint', lang)}</div>
+            <div style={{ ...styles.warnHit, color: '#29b6f6', background: '#0d1a2e' }}>
+              {isEN
+                ? '📈 Price has passed the min target (2.5× risk). Consider whether a new swing high has formed to lower your trailing stop.'
+                : '📈 價格已超越最低目標（2.5倍風險）。考慮是否有新前高出現，可下移跟隨止損鎖定更多利潤。'}
+            </div>
           )}
 
           <div style={styles.closeRow}>
@@ -359,7 +386,7 @@ export default function PaperTradingPanel({
   );
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────────────────────────
+// ─── Sub-components ──────────────────────────────────────────────────────────
 function HowToStep({ num, color, title, desc }: { num: string; color: string; title: string; desc: string }) {
   return (
     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -391,35 +418,35 @@ function PosItem({ label, value, color }: { label: string; value: string; color?
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  wrapper:          { background: '#1a1a2e', border: '1px solid #29b6f6', borderRadius: 10, padding: 16, maxWidth: 700, width: '100%', display: 'flex', flexDirection: 'column', gap: 12 },
-  header:           { display: 'flex', gap: 16, flexWrap: 'wrap', background: '#0f0f1a', borderRadius: 8, padding: '10px 14px' },
-  notice:           { fontSize: '0.75rem', color: '#29b6f6', fontFamily: 'monospace', background: '#0d2a3e', padding: '6px 10px', borderRadius: 6, border: '1px solid #29b6f630' },
-  howToWrapper:     { background: '#0d0d1e', border: '1px solid #2a2a3e', borderRadius: 8, overflow: 'hidden' },
-  howToToggle:      { width: '100%', background: 'none', border: 'none', color: '#f0b90b', padding: '10px 14px', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', display: 'flex', alignItems: 'center', textAlign: 'left', gap: 8 },
-  howToBody:        { padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 12 },
-  howToTitle:       { fontSize: '0.8rem', color: '#888', fontWeight: 'bold', fontFamily: 'monospace' },
-  stepsCol:         { display: 'flex', flexDirection: 'column', gap: 12 },
-  exampleBox:       { background: '#0d1a00', border: '1px solid #f0b90b33', borderRadius: 8, padding: '10px 14px' },
-  waitBanner:       { display: 'flex', gap: 12, alignItems: 'flex-start', background: '#1a1200', border: '1px solid #f0b90b33', borderRadius: 8, padding: '10px 12px' },
-  form:             { display: 'flex', flexDirection: 'column', gap: 10 },
-  formTitle:        { fontSize: '0.8rem', color: '#888', fontFamily: 'monospace', fontWeight: 'bold', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
-  signalHint:       { fontSize: '0.78rem', color: '#f0b90b', fontFamily: 'monospace', background: '#1a1500', padding: '6px 10px', borderRadius: 6 },
-  grid:             { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8 },
-  posGrid:          { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 6 },
-  pplRow:           { fontSize: '0.78rem', color: '#888', fontFamily: 'monospace', background: '#0d1a0d', border: '1px solid #f0b90b22', borderRadius: 6, padding: '6px 10px', display: 'flex', alignItems: 'center' },
-  input:            { background: '#0f0f1a', border: '1px solid #2a2a3e', color: '#fff', padding: '6px 10px', borderRadius: 6, fontFamily: 'monospace', fontSize: '0.82rem', outline: 'none', width: '100%' },
-  typeBtn:          { background: '#0f0f1a', border: '1px solid #2a2a3e', color: '#666', padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.78rem' },
-  longOn:           { background: '#0d3d1f', border: '1px solid #00c853', color: '#00c853' },
-  shortOn:          { background: '#3d0d0d', border: '1px solid #ff1744', color: '#ff1744' },
-  btnRow:           { display: 'flex', gap: 8, flexWrap: 'wrap' },
-  signalBtn:        { background: '#1a1500', border: '1px solid #f0b90b', color: '#f0b90b', padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.82rem', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 },
-  openBtn:          { background: '#16213e', border: '1px solid #29b6f6', color: '#29b6f6', padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.82rem', flex: 1 },
-  closeRow:         { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
-  closeBtn:         { background: '#3d0d0d', border: '1px solid #ff1744', color: '#ff1744', padding: '7px 14px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'nowrap' },
-  mktBtn:           { background: '#0d3d1f', border: '1px solid #00c853', color: '#00c853', padding: '7px 14px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'nowrap' },
-  warnHit:          { fontSize: '0.78rem', color: '#ff9800', fontFamily: 'monospace', padding: '4px 8px', background: '#2a1800', borderRadius: 4 },
-  resetRow:         { display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid #1a1a2e', paddingTop: 10 },
-  resetBtn:         { background: 'none', border: 'none', color: '#333', fontFamily: 'monospace', fontSize: '0.72rem', cursor: 'pointer' },
-  confirmResetBtn:  { background: '#16213e', border: '1px solid #f0b90b', color: '#f0b90b', padding: '4px 12px', borderRadius: 4, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' },
-  cancelBtn:        { background: 'none', border: '1px solid #333', color: '#555', padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' },
+  wrapper:         { background: '#1a1a2e', border: '1px solid #29b6f6', borderRadius: 10, padding: 16, maxWidth: 700, width: '100%', display: 'flex', flexDirection: 'column', gap: 12 },
+  header:          { display: 'flex', gap: 16, flexWrap: 'wrap', background: '#0f0f1a', borderRadius: 8, padding: '10px 14px' },
+  notice:          { fontSize: '0.75rem', color: '#29b6f6', fontFamily: 'monospace', background: '#0d2a3e', padding: '6px 10px', borderRadius: 6, border: '1px solid #29b6f630' },
+  howToWrapper:    { background: '#0d0d1e', border: '1px solid #2a2a3e', borderRadius: 8, overflow: 'hidden' },
+  howToToggle:     { width: '100%', background: 'none', border: 'none', color: '#f0b90b', padding: '10px 14px', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', display: 'flex', alignItems: 'center', textAlign: 'left', gap: 8 },
+  howToBody:       { padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 12 },
+  howToTitle:      { fontSize: '0.8rem', color: '#888', fontWeight: 'bold', fontFamily: 'monospace' },
+  stepsCol:        { display: 'flex', flexDirection: 'column', gap: 12 },
+  exampleBox:      { background: '#0d1a00', border: '1px solid #f0b90b33', borderRadius: 8, padding: '10px 14px' },
+  waitBanner:      { display: 'flex', gap: 12, alignItems: 'flex-start', background: '#1a1200', border: '1px solid #f0b90b33', borderRadius: 8, padding: '10px 12px' },
+  form:            { display: 'flex', flexDirection: 'column', gap: 10 },
+  formTitle:       { fontSize: '0.8rem', color: '#888', fontFamily: 'monospace', fontWeight: 'bold', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
+  signalHint:      { fontSize: '0.78rem', color: '#f0b90b', fontFamily: 'monospace', background: '#1a1500', padding: '6px 10px', borderRadius: 6 },
+  grid:            { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8 },
+  posGrid:         { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 6 },
+  pplRow:          { fontSize: '0.78rem', color: '#888', fontFamily: 'monospace', background: '#0d1a0d', border: '1px solid #f0b90b22', borderRadius: 6, padding: '6px 10px', display: 'flex', alignItems: 'center' },
+  input:           { background: '#0f0f1a', border: '1px solid #2a2a3e', color: '#fff', padding: '6px 10px', borderRadius: 6, fontFamily: 'monospace', fontSize: '0.82rem', outline: 'none', width: '100%' },
+  typeBtn:         { background: '#0f0f1a', border: '1px solid #2a2a3e', color: '#666', padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.78rem' },
+  longOn:          { background: '#0d3d1f', border: '1px solid #00c853', color: '#00c853' },
+  shortOn:         { background: '#3d0d0d', border: '1px solid #ff1744', color: '#ff1744' },
+  btnRow:          { display: 'flex', gap: 8, flexWrap: 'wrap' },
+  signalBtn:       { background: '#1a1500', border: '1px solid #f0b90b', color: '#f0b90b', padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.82rem', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  openBtn:         { background: '#16213e', border: '1px solid #29b6f6', color: '#29b6f6', padding: '8px 16px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.82rem', flex: 1 },
+  closeRow:        { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
+  closeBtn:        { background: '#3d0d0d', border: '1px solid #ff1744', color: '#ff1744', padding: '7px 14px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'nowrap' },
+  mktBtn:          { background: '#0d3d1f', border: '1px solid #00c853', color: '#00c853', padding: '7px 14px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.8rem', whiteSpace: 'nowrap' },
+  warnHit:         { fontSize: '0.78rem', color: '#ff9800', fontFamily: 'monospace', padding: '4px 8px', background: '#2a1800', borderRadius: 4 },
+  resetRow:        { display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid #1a1a2e', paddingTop: 10 },
+  resetBtn:        { background: 'none', border: 'none', color: '#333', fontFamily: 'monospace', fontSize: '0.72rem', cursor: 'pointer' },
+  confirmResetBtn: { background: '#16213e', border: '1px solid #f0b90b', color: '#f0b90b', padding: '4px 12px', borderRadius: 4, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' },
+  cancelBtn:       { background: 'none', border: '1px solid #333', color: '#555', padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem' },
 };
