@@ -80,10 +80,6 @@ export default function WaitCard({
   const g4longOk  = g3longOk  && lastHigh  != null && price > lastHigh.price;
   const g4shortOk = g3shortOk && lastLow   != null && price < lastLow.price;
 
-  // Progress toward breakout (0→1)
-  const longBreakoutProg  = lastHigh  ? Math.min(price / lastHigh.price, 1) : 0;
-  const shortBreakoutProg = lastLow   ? Math.min(lastLow.price / price, 1) : 0;
-
   // ── Gate 5: MA30 proximity (0.8%) ────────────────────────────────────────
   const PROX = 0.008;
   const ma30 = ma30val ?? 0;
@@ -269,7 +265,7 @@ export default function WaitCard({
           tip={isEN
             ? 'The signal fires on the breakout candle itself — not before. Entering before the break is anticipating, not confirming.'
             : '訊號在突破的那根K線觸發，而非提前入場。在突破前進場是預判，不是確認。'}
-          progress={lastHigh ? Math.min((price / lastHigh.price), 1.002) : undefined}
+          progress={lastHigh ? Math.min((price / lastHigh.price), 1.0) : undefined}
           progressLabel={lastHigh
             ? (isEN
                 ? `Price ${price.toFixed(2)} → Target breakout: ${lastHigh.price.toFixed(2)}`
@@ -298,7 +294,7 @@ export default function WaitCard({
           tip={isEN
             ? 'Entry is on confirmed breakdown — price must close below the swing low, not just touch it.'
             : '在確認跌破後入場——收盤價必須低於前低，而非僅觸及。'}
-          progress={lastLow ? Math.min((lastLow.price / price), 1.002) : undefined}
+          progress={lastLow ? Math.min((lastLow.price / price), 1.0) : undefined}
           progressLabel={lastLow
             ? (isEN
                 ? `Price ${price.toFixed(2)} → Target breakdown: ${lastLow.price.toFixed(2)}`

@@ -76,8 +76,8 @@ export default function BeginnerGuide({ lang }: { lang: Lang }) {
             </GuideItem>
             <GuideItem tag={isEN ? 'Gate 3' : '條件3'} tagColor="#f0b90b">
               {isEN
-                ? 'The latest confirmed swing high is a Higher High (HH) — it is above the previous swing high. This confirms the market is genuinely making upward progress, not just noise.'
-                : '最新確認的前高是「更高前高」（Higher High）——高於上一個前高。這確認市場真正在向上推進，而非橫盤噪音。'}
+                ? 'For LONG: the latest confirmed swing high must be a Higher High (HH) — above the previous swing high. For SHORT: the latest confirmed swing low must be a Lower Low (LL) — below the previous swing low. This confirms the market is genuinely trending, not just noise.'
+                : '做多：最新確認的前高必須是「更高前高」（Higher High）——高於上一個前高。做空：最新確認的前低必須是「更低前低」（Lower Low）——低於上一個前低。這確認市場正在真正趨勢運行，而非橫盤噪音。'}
             </GuideItem>
             <GuideItem tag={isEN ? 'Gate 4' : '條件4'} tagColor="#00c853">
               {isEN
