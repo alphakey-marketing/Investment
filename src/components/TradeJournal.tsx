@@ -15,7 +15,7 @@ import React, { useState } from 'react';
 import { TradeRecord } from '../types/trade';
 import { calcPerformance } from '../hooks/useTradeJournal';
 import { Lang, tr } from '../i18n';
-import { fmtTime } from '../utils/formatters';
+import { fmtTime, fmt } from '../utils/formatters';
 import StatBox from '../components/StatBox';
 import CumPnlChart from '../components/CumPnlChart';
 
@@ -26,8 +26,6 @@ interface Props {
   onClear: () => void;
   lang: Lang;
 }
-
-function fmt(n: number) { return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 const PROMPTS_EN = [
   'Did I follow the signal, or did I override it? What did I learn?',

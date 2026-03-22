@@ -10,6 +10,7 @@ import { SignalEvent } from '../types/binance';
 import { TradeRecord } from '../types/trade';
 import { HKTicker, CONTRACT_SPECS, ContractSpec } from '../types/hkmarket';
 import { Lang, tr } from '../i18n';
+import Field from './Field';
 
 interface Props {
   signal:      SignalEvent | null;
@@ -305,16 +306,6 @@ function TipChip({ icon, label, value, desc }: { icon: string; label: string; va
       <div style={{ fontSize: '0.72rem', color: '#888', fontFamily: 'monospace', marginBottom: 2 }}>{icon} {label}</div>
       <div style={{ fontSize: '0.82rem', color: '#f0b90b', fontWeight: 'bold', fontFamily: 'monospace' }}>{value}</div>
       <div style={{ fontSize: '0.68rem', color: '#444', fontFamily: 'monospace', marginTop: 2, lineHeight: 1.4 }}>{desc}</div>
-    </div>
-  );
-}
-function Field({ label, tooltip, children }: { label: string; tooltip?: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: '0.7rem', color: '#555', fontFamily: 'monospace', letterSpacing: 0.5 }} title={tooltip}>
-        {label}{tooltip ? ' ℹ️' : ''}
-      </span>
-      {children}
     </div>
   );
 }
