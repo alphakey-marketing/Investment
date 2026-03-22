@@ -4,6 +4,10 @@ import { BacktestResult } from '../types/mode';
 import { HKTicker, CONTRACT_SPECS } from '../types/hkmarket';
 import { runBacktest } from '../utils/backtest';
 import { Lang, tr } from '../i18n';
+import { fmtHKD, fmtTime } from '../utils/formatters';
+import StatBox from '../components/StatBox';
+import CumPnlChart from '../components/CumPnlChart';
+import Field from '../components/Field';
 
 interface Props {
   candles:   Candle[];
@@ -12,15 +16,6 @@ interface Props {
   ma3Period: number;   // NEW — MA150 for triple stack
   symbol:    string;
   lang:      Lang;
-}
-
-function fmtHKD(n: number) {
-  return `HK$${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
-function fmtTime(unix: number) {
-  return new Date(unix * 1000).toLocaleString('en-GB', {
-    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
-  });
 }
 
 // ── Interpretation helper ──────────────────────────────────────────────────────────────────────────
@@ -230,15 +225,15 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, ma3Period
         <>
           <div style={styles.sectionTitle}>{tr('backtestResults', lang)}</div>
           <div style={styles.summaryGrid}>
-            <SBox label={tr('btTotalTrades', lang)}   value={result.totalSignals.toString()} />
-            <SBox label={tr('btWinRate', lang)}        value={`${result.winRate}%`}  color={result.winRate >= 50 ? '#00c853' : '#ff9800'} />
-            <SBox label={tr('btTotalPnl', lang)}       value={`${result.totalPnl >= 0 ? '+' : ''}${fmtHKD(result.totalPnl)}`} color={result.totalPnl >= 0 ? '#00c853' : '#ff1744'} />
-            <SBox label={tr('btTotalReturn', lang)}    value={`${result.totalPnlPct >= 0 ? '+' : ''}${result.totalPnlPct}%`} color={result.totalPnlPct >= 0 ? '#00c853' : '#ff1744'} />
-            <SBox label={tr('btProfitFactor', lang)}   value={result.profitFactor.toString()} color={result.profitFactor >= 1.5 ? '#00c853' : '#ff9800'} tooltip={tr('btPFTip', lang)} />
-            <SBox label={tr('btMaxDD', lang)}          value={`-${fmtHKD(result.maxDrawdown)}`} color="#ff9800" tooltip={tr('btMaxDDTip', lang)} />
-            <SBox label={tr('btWins', lang)}           value={result.wins.toString()}   color="#00c853" />
-            <SBox label={tr('btLosses', lang)}         value={result.losses.toString()} color="#ff1744" />
-            <SBox
+            <StatBox label={tr('btTotalTrades', lang)}   value={result.totalSignals.toString()} />
+            <StatBox label={tr('btWinRate', lang)}        value={`${result.winRate}%`}  color={result.winRate >= 50 ? '#00c853' : '#ff9800'} />
+            <StatBox label={tr('btTotalPnl', lang)}       value={`${result.totalPnl >= 0 ? '+' : ''}${fmtHKD(result.totalPnl)}`} color={result.totalPnl >= 0 ? '#00c853' : '#ff1744'} />
+            <StatBox label={tr('btTotalReturn', lang)}    value={`${result.totalPnlPct >= 0 ? '+' : ''}${result.totalPnlPct}%`} color={result.totalPnlPct >= 0 ? '#00c853' : '#ff1744'} />
+            <StatBox label={tr('btProfitFactor', lang)}   value={result.profitFactor.toString()} color={result.profitFactor >= 1.5 ? '#00c853' : '#ff9800'} tooltip={tr('btPFTip', lang)} />
+            <StatBox label={tr('btMaxDD', lang)}          value={`-${fmtHKD(result.maxDrawdown)}`} color="#ff9800" tooltip={tr('btMaxDDTip', lang)} />
+            <StatBox label={tr('btWins', lang)}           value={result.wins.toString()}   color="#00c853" />
+            <StatBox label={tr('btLosses', lang)}         value={result.losses.toString()} color="#ff1744" />
+            <StatBox
               label={isEN ? 'Total Commission' : '總會費'}
               value={`-${fmtHKD(result.totalCommission)}`}
               color="#888"
@@ -246,7 +241,7 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, ma3Period
                 ? `${result.totalSignals} trades × HK$${commPerRound}/round = ${fmtHKD(result.totalCommission)} in fees`
                 : `${result.totalSignals} 筆 × HK$${commPerRound}/回 = ${fmtHKD(result.totalCommission)} 會費`}
             />
-            <SBox
+            <StatBox
               label={isEN ? 'Range Filtered' : '盤整過濾'}
               value={result.rangeFiltered.toString()}
               color="#f0b90b"
@@ -254,7 +249,7 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, ma3Period
                 ? `${result.rangeFiltered} entry-eligible candles skipped because MA5/MA30/MA150 were not cleanly aligned (RANGE state). This is the K均 RANGE kill-switch working correctly.`
                 : `${result.rangeFiltered} 根符合條件的K線因MA5/MA30/MA150排列混亂（盤整狀態）而被過濾。這是K均均線排列過濾器正常運作。`}
             />
-            <SBox
+            <StatBox
               label={isEN ? 'Avg SL Dist' : '平均止損距離'}
               value={result.avgSlDist > 0 ? result.avgSlDist.toFixed(3) : '—'}
               color="#888"
@@ -297,37 +292,7 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, ma3Period
           {cumData.length > 1 && (
             <>
               <div style={styles.sectionTitle}>{tr('btCumChart', lang)}</div>
-              <div style={styles.chartBox}>
-                <svg width="100%" height="100"
-                  viewBox={`0 0 ${Math.max(cumData.length * 36, 400)} 100`}
-                  preserveAspectRatio="none"
-                >
-                  {(() => {
-                    const vals  = cumData.map((d) => d.cum);
-                    const minV  = Math.min(...vals, 0); const maxV = Math.max(...vals, 0);
-                    const range = maxV - minV || 1;
-                    const W     = Math.max(cumData.length * 36, 400);
-                    const step  = W / (cumData.length - 1 || 1);
-                    const toY   = (v: number) => 88 - ((v - minV) / range) * 78;
-                    const zeroY = toY(0);
-                    const pts   = cumData.map((d, i) => `${i * step},${toY(d.cum)}`).join(' ');
-                    const lastVal = vals[vals.length - 1];
-                    const area  = `M0,${toY(cumData[0].cum)} `
-                      + cumData.slice(1).map((d, i) => `L${(i + 1) * step},${toY(d.cum)}`).join(' ')
-                      + ` L${(cumData.length - 1) * step},${zeroY} L0,${zeroY} Z`;
-                    return (
-                      <>
-                        <line x1="0" y1={zeroY} x2={W} y2={zeroY} stroke="#2a2a3e" strokeWidth="1" strokeDasharray="4" />
-                        <path d={area} fill={lastVal >= 0 ? '#00c85320' : '#ff174420'} />
-                        <polyline points={pts} fill="none" stroke={lastVal >= 0 ? '#00c853' : '#ff1744'} strokeWidth="2" />
-                        {cumData.map((d, i) => (
-                          <circle key={i} cx={i * step} cy={toY(d.cum)} r="3" fill={d.cum >= 0 ? '#00c853' : '#ff1744'} />
-                        ))}
-                      </>
-                    );
-                  })()}
-                </svg>
-              </div>
+              <CumPnlChart data={cumData} />
             </>
           )}
 
@@ -383,24 +348,6 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, ma3Period
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: '0.7rem', color: '#555', fontFamily: 'monospace' }}>{label}</span>
-      {children}
-      {hint && <span style={{ fontSize: '0.65rem', color: '#333', fontFamily: 'monospace', lineHeight: 1.4 }}>{hint}</span>}
-    </div>
-  );
-}
-function SBox({ label, value, color, tooltip }: { label: string; value: string; color?: string; tooltip?: string }) {
-  return (
-    <div style={{ background: '#0f0f1a', borderRadius: 8, padding: '9px 11px', border: '1px solid #1a1a2e' }} title={tooltip}>
-      <div style={{ fontSize: '0.67rem', color: '#444', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 3 }}>{label}</div>
-      <div style={{ fontSize: '0.9rem', fontWeight: 'bold', fontFamily: 'monospace', color: color ?? '#fff' }}>{value}</div>
-    </div>
-  );
-}
-
 const styles: Record<string, React.CSSProperties> = {
   wrapper:       { background: '#1a1a2e', border: '1px solid #ab47bc', borderRadius: 10, padding: 16, maxWidth: 700, width: '100%', display: 'flex', flexDirection: 'column', gap: 12 },
   title:         { fontSize: '1rem', color: '#ab47bc', fontFamily: 'monospace', fontWeight: 'bold' },
@@ -412,7 +359,6 @@ const styles: Record<string, React.CSSProperties> = {
   runBtn:        { background: '#2a0a3e', border: '1px solid #ab47bc', color: '#ab47bc', padding: '9px 20px', borderRadius: 8, cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: 'bold' },
   sectionTitle:  { fontSize: '0.72rem', color: '#555', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: 1 },
   summaryGrid:   { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(115px, 1fr))', gap: 8 },
-  chartBox:      { background: '#0f0f1a', borderRadius: 8, padding: '10px 8px', border: '1px solid #1a1a2e', overflowX: 'auto' },
   table:         { width: '100%', borderCollapse: 'collapse', fontFamily: 'monospace', fontSize: '0.77rem', minWidth: 560 },
   th:            { padding: '7px 10px', color: '#444', fontWeight: 'normal', textAlign: 'left', borderBottom: '1px solid #1a1a2e', whiteSpace: 'nowrap' },
   td:            { padding: '7px 10px', color: '#aaa', verticalAlign: 'middle', whiteSpace: 'nowrap' },

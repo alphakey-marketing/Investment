@@ -57,8 +57,8 @@ function BeginnerRoadmap({ lang, onDismiss }: { lang: Lang; onDismiss: () => voi
     <div style={rmStyles.wrapper}>
       <div style={rmStyles.inner}>
         <div style={rmStyles.titleRow}>
-          <span style={rmStyles.title}>{isEN ? '🗺️ Your 4-Step Beginner Roadmap' : '🗺️ 新手四步入門路線圖'}</span>
-          <button onClick={onDismiss} style={rmStyles.dismiss} title={isEN ? 'Dismiss' : '關閉'}>✕</button>
+          <span style={rmStyles.title}>{tr('rmTitle', lang)}</span>
+          <button onClick={onDismiss} style={rmStyles.dismiss} title={tr('rmDismiss', lang)}>✕</button>
         </div>
         <div style={rmStyles.stepsRow}>
           {steps.map((step, i) => (
@@ -81,7 +81,7 @@ function BeginnerRoadmap({ lang, onDismiss }: { lang: Lang; onDismiss: () => voi
         </div>
         {allDone && (
           <div style={{ fontSize: '0.78rem', color: '#00c853', textAlign: 'center', padding: '6px 0' }}>
-            {isEN ? '🎉 All steps done! You are ready to trade with confidence.' : '🎉 全部完成！你已準備好自信交易。'}
+            {tr('rmAllDone', lang)}
           </div>
         )}
       </div>
@@ -112,7 +112,7 @@ function ChartSourceBadge({ source, lang }: { source: 'yahoo' | null; lang: Lang
       border: '1px solid #f0b90b33',
       borderRadius: 5, padding: '2px 8px',
     }}>
-      {isEN ? '🟡 Yahoo Finance · 60s refresh' : '🟡 Yahoo Finance · 60秒更新'}
+      {tr('chartSource60s', lang)}
     </div>
   );
 }
@@ -143,7 +143,7 @@ export default function App() {
   const isEN = lang === 'EN';
 
   const symbolLabels: Record<HKTicker, string> = {
-    '3081.HK': isEN ? '🥇 Value Gold ETF' : '🥇 價値黃金ETF',
+    '3081.HK': tr('sym3081', lang),
   };
   const symbolLabel = symbolLabels[symbol] ?? symbol;
   const modeColor = mode === 'LIVE' ? '#f0b90b' : mode === 'PAPER' ? '#29b6f6' : '#ab47bc';
@@ -201,12 +201,11 @@ export default function App() {
 
   // ── Banner text ───────────────────────────────────────────────────────────────────────────────
   const dataSourceBanner = isStale
-    ? (isEN
-        ? `🔴 STALE — last update ${secsSinceUpdate}s ago. Check server connection.`
-        : `🔴 數据已過時 — 最後更新於 ${secsSinceUpdate} 秒前。請檢查服務器連接。`)
+    ? (isEN ? `🔴 STALE — last update ${secsSinceUpdate}s ago. Check server connection.`
+            : `🔴 數据已過時 — 最後更新於 ${secsSinceUpdate} 秒前。請檢查服務器連接。`)
     : dataSource === 'yahoo'
-    ? (isEN ? '🟡 Yahoo Finance · via server proxy · updates every 60s' : '🟡 Yahoo Finance · 經伺服器代理 · 每60秒更新')
-    : (isEN ? '⏳ Connecting…' : '⏳ 連接中…');
+    ? tr('chartSourceProxy', lang)
+    : tr('chartSourceConnect', lang);
 
   const bannerColor      = isStale ? '#ff5252' : dataSource === 'yahoo' ? '#f0b90b88' : '#55555588';
   const bannerBackground = isStale ? '#2a0000' : dataSource === 'yahoo' ? '#1a1500'   : '#0f0f1a';
@@ -231,12 +230,10 @@ export default function App() {
             <div style={styles.onboardIcon}>👋</div>
             <div style={{ flex: 1 }}>
               <div style={styles.onboardTitle}>
-                {isEN ? '🥇 Welcome to HK Gold ETF Signal Trader!' : '🥇 歡迎使用黃金ETF K均訊號系統！'}
+                {tr('onboardTitle', lang)}
               </div>
               <div style={styles.onboardDesc}>
-                {isEN
-                  ? 'Analyse Value Gold ETF (3081.HK) on HKEX via Yahoo Finance. Signal alerts via Telegram & Email.'
-                  : '透過 Yahoo Finance 分析價値黃金ETF (3081.HK)。訊號警報發送至 Telegram 與電郵。'}
+                {tr('onboardDesc', lang)}
               </div>
             </div>
             <button onClick={dismissOnboard} style={styles.onboardClose}>✕</button>
@@ -250,7 +247,7 @@ export default function App() {
           onClick={showRoadmapAgain}
           style={{ background: 'none', border: '1px solid #1a1a2e', color: '#2a2a4e', fontSize: '0.68rem', fontFamily: 'monospace', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', alignSelf: 'flex-end' }}
         >
-          {isEN ? '🗺️ Show Roadmap' : '🗺️ 顯示路線圖'}
+          {tr('showRoadmap', lang)}
         </button>
       )}
 
@@ -261,11 +258,11 @@ export default function App() {
           <div style={styles.subHeader}>
             {symbolLabel} · {klineInterval.toUpperCase()} · MA{ma1Period}/MA{ma2Period}/MA{ma3Period}
             <span style={{ marginLeft: 6, fontSize: '0.65rem', color: '#ab47bc', background: '#ab47bc18', border: '1px solid #ab47bc44', borderRadius: 4, padding: '1px 5px' }}>
-              {isEN ? '⚡ KMA v2' : '⚡ K均 v2'}
+              {tr('kmaV2Badge', lang)}
             </span>
             {signal && (
               <span style={{ marginLeft: 8, color: signal.type === 'LONG' ? '#00c853' : '#ff1744', fontSize: '0.7rem' }}>
-                ● {isEN ? 'Signal Active' : '有訊號'}
+                ● {tr('signalActive', lang)}
               </span>
             )}
           </div>
@@ -278,7 +275,7 @@ export default function App() {
             <span style={styles.tgBadge}>{sending ? tr('badgeTGSending', lang) : tr('badgeTG', lang)}</span>
           )}
           {mode === 'LIVE' && emailConfig.enabled && (
-            <span style={styles.emailBadge}>{emailSending ? (isEN ? '📧 Sending…' : '📧 發送中…') : (isEN ? '📧 Email ON' : '📧 電郵開啟')}</span>
+            <span style={styles.emailBadge}>{emailSending ? tr('emailSendingBadge', lang) : tr('emailOnBadge', lang)}</span>
           )}
         </div>
       </div>
@@ -306,7 +303,7 @@ export default function App() {
           <ChartSourceBadge source={dataSource} lang={lang} />
         </div>
         {showChart ? (
-          <ErrorBoundary fallback={isEN ? 'Chart failed to load' : '圖表載入失敗'}>
+          <ErrorBoundary fallback={tr('chartFailed', lang)}>
             <KlineChart
               candles={candles}
               ma5={ma5}
@@ -323,16 +320,14 @@ export default function App() {
           <div style={styles.chartSkeleton}>
             <span style={{ fontSize: '1.4rem' }}>⏳</span>
             <span style={{ color: '#555', fontFamily: 'monospace', fontSize: '0.82rem' }}>
-              {isEN ? 'Loading chart data…' : '載入圖表數據中…'}
+              {tr('chartLoading', lang)}
             </span>
           </div>
         ) : error ? (
           <div style={{ ...styles.chartSkeleton, borderColor: '#f0b90b33' }}>
             <span style={{ fontSize: '1.2rem' }}>⚠️</span>
             <span style={{ color: '#f0b90b88', fontFamily: 'monospace', fontSize: '0.8rem' }}>
-              {isEN
-                ? 'Could not load chart — check server is running on Replit'
-                : '圖表載入失敗 — 請檢查 Replit 伺服器是否運行中'}
+              {tr('chartError', lang)}
             </span>
           </div>
         ) : null}
@@ -347,7 +342,7 @@ export default function App() {
       )}
       {error && !loading && (
         <div style={{ ...styles.statusCard, borderColor: '#f0b90b55', color: '#f0b90b88' }}>
-          <span>⚠️ {isEN ? 'Data error' : '數据錯誤'}</span>
+          <span>⚠️ {tr('dataError', lang)}</span>
           <span style={{ fontSize: '0.75rem', color: '#555' }}>{error}</span>
         </div>
       )}
@@ -406,7 +401,7 @@ export default function App() {
       <p style={styles.footer}>
         📡 {candles.length} {tr('footerKlines', lang)}
         <span style={{ margin: '0 8px', color: '#1e1e35' }}>·</span>
-        {isEN ? '⚠️ For reference only. Not financial advice.' : '⚠️ 僅供參考，非投資建議。'}
+        {tr('footerDisclaimer', lang)}
       </p>
     </main>
   );

@@ -15,6 +15,9 @@ import React, { useState } from 'react';
 import { TradeRecord } from '../types/trade';
 import { calcPerformance } from '../hooks/useTradeJournal';
 import { Lang, tr } from '../i18n';
+import { fmtTime } from '../utils/formatters';
+import StatBox from '../components/StatBox';
+import CumPnlChart from '../components/CumPnlChart';
 
 interface Props {
   trades: TradeRecord[];
@@ -25,9 +28,6 @@ interface Props {
 }
 
 function fmt(n: number) { return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function fmtTime(unix: number) {
-  return new Date(unix * 1000).toLocaleString('en-GB', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
-}
 
 const PROMPTS_EN = [
   'Did I follow the signal, or did I override it? What did I learn?',
@@ -69,6 +69,9 @@ export default function TradeJournal({ trades, onClose, onDelete, onClear, lang 
     setExitInput('');
   };
 
+  // TODO BUG: handleSaveNote does not persist to TradeRecord.
+  // Need to add onUpdateNote(id: string, note: string) prop and wire
+  // it here + implement in useTradeJournal. Fix in a separate PR.
   const handleSaveNote = (id: string) => {
     setSavedNotes((prev) => ({ ...prev, [id]: true }));
     setTimeout(() => setSavedNotes((prev) => ({ ...prev, [id]: false })), 2000);
@@ -132,42 +135,21 @@ export default function TradeJournal({ trades, onClose, onDelete, onClear, lang 
           {/* Performance Summary */}
           <div style={styles.sectionTitle}>{tr('perfSummary', lang)}</div>
           <div style={styles.summaryGrid}>
-            <SCard label={tr('totalTrades', lang)} value={perf.totalTrades.toString()} />
-            <SCard label={tr('winRate', lang)} value={`${perf.winRate}%`} color={perf.winRate >= 50 ? '#00c853' : '#ff9800'} />
-            <SCard label={tr('totalPnl', lang)} value={`${perf.totalPnl >= 0 ? '+' : ''}HK$${fmt(perf.totalPnl)}`} color={perf.totalPnl >= 0 ? '#00c853' : '#ff1744'} />
-            <SCard label={tr('profitFactor', lang)} value={perf.profitFactor.toString()} color={perf.profitFactor >= 1.5 ? '#00c853' : '#ff9800'} tooltip={tr('profitFactorTip', lang)} />
-            <SCard label={tr('avgWin', lang)} value={`+HK$${fmt(perf.avgWin)}`} color="#00c853" />
-            <SCard label={tr('avgLoss', lang)} value={`-HK$${fmt(perf.avgLoss)}`} color="#ff1744" />
-            <SCard label={tr('bestTrade', lang)} value={`+HK$${fmt(perf.bestTrade)}`} color="#00c853" />
-            <SCard label={tr('worstTrade', lang)} value={`HK$${fmt(perf.worstTrade)}`} color="#ff1744" />
+            <StatBox label={tr('totalTrades', lang)} value={perf.totalTrades.toString()} />
+            <StatBox label={tr('winRate', lang)} value={`${perf.winRate}%`} color={perf.winRate >= 50 ? '#00c853' : '#ff9800'} />
+            <StatBox label={tr('totalPnl', lang)} value={`${perf.totalPnl >= 0 ? '+' : ''}HK$${fmt(perf.totalPnl)}`} color={perf.totalPnl >= 0 ? '#00c853' : '#ff1744'} />
+            <StatBox label={tr('profitFactor', lang)} value={perf.profitFactor.toString()} color={perf.profitFactor >= 1.5 ? '#00c853' : '#ff9800'} tooltip={tr('profitFactorTip', lang)} />
+            <StatBox label={tr('avgWin', lang)} value={`+HK$${fmt(perf.avgWin)}`} color="#00c853" />
+            <StatBox label={tr('avgLoss', lang)} value={`-HK$${fmt(perf.avgLoss)}`} color="#ff1744" />
+            <StatBox label={tr('bestTrade', lang)} value={`+HK$${fmt(perf.bestTrade)}`} color="#00c853" />
+            <StatBox label={tr('worstTrade', lang)} value={`HK$${fmt(perf.worstTrade)}`} color="#ff1744" />
           </div>
 
           {/* Cumulative P&L Chart */}
           {cumPnlData.length > 1 && (
             <>
               <div style={styles.sectionTitle}>{tr('cumPnlChart', lang)}</div>
-              <div style={styles.miniChart}>
-                <svg width="100%" height="80" viewBox={`0 0 ${cumPnlData.length * 40} 80`} preserveAspectRatio="none">
-                  {(() => {
-                    const vals = cumPnlData.map((d) => d.cum);
-                    const minV = Math.min(...vals, 0); const maxV = Math.max(...vals, 0);
-                    const range = maxV - minV || 1;
-                    const toY = (v: number) => 70 - ((v - minV) / range) * 60;
-                    const zeroY = toY(0);
-                    const pts = cumPnlData.map((d, i) => `${i * 40 + 20},${toY(d.cum)}`).join(' ');
-                    const area = `M20,${toY(cumPnlData[0].cum)} ` + cumPnlData.slice(1).map((d, i) => `L${(i+1)*40+20},${toY(d.cum)}`).join(' ') + ` L${(cumPnlData.length-1)*40+20},${zeroY} L20,${zeroY} Z`;
-                    const lastVal = vals[vals.length - 1];
-                    return (
-                      <>
-                        <line x1="0" y1={zeroY} x2={cumPnlData.length*40} y2={zeroY} stroke="#2a2a3e" strokeWidth="1" strokeDasharray="4" />
-                        <path d={area} fill={lastVal >= 0 ? '#00c85322' : '#ff174422'} />
-                        <polyline points={pts} fill="none" stroke={lastVal >= 0 ? '#00c853' : '#ff1744'} strokeWidth="2" />
-                        {cumPnlData.map((d, i) => <circle key={i} cx={i*40+20} cy={toY(d.cum)} r="3" fill={d.cum >= 0 ? '#00c853' : '#ff1744'} />)}
-                      </>
-                    );
-                  })()}
-                </svg>
-              </div>
+              <CumPnlChart data={cumPnlData} height={80} />
             </>
           )}
 
@@ -340,15 +322,6 @@ export default function TradeJournal({ trades, onClose, onDelete, onClear, lang 
   );
 }
 
-function SCard({ label, value, color, tooltip }: { label: string; value: string; color?: string; tooltip?: string }) {
-  return (
-    <div style={{ background:'#0f0f1a', borderRadius:8, padding:'10px 12px', border:'1px solid #1a1a2e' }} title={tooltip}>
-      <div style={{ fontSize:'0.67rem', color:'#444', fontFamily:'monospace', textTransform:'uppercase', marginBottom:4 }}>{label}</div>
-      <div style={{ fontSize:'0.95rem', fontWeight:'bold', fontFamily:'monospace', color: color??'#fff' }}>{value}</div>
-    </div>
-  );
-}
-
 const styles: Record<string, React.CSSProperties> = {
   wrapper:          { maxWidth: 700, width: '100%' },
   toggleBtn:        { width:'100%', background:'#1a1a2e', border:'1px solid #2a2a3e', color:'#ccc', padding:'10px 16px', borderRadius:10, cursor:'pointer', fontFamily:'monospace', fontSize:'0.85rem', display:'flex', alignItems:'center', textAlign:'left', gap:8 },
@@ -356,7 +329,6 @@ const styles: Record<string, React.CSSProperties> = {
   reflectionBanner: { display: 'flex', gap: 12, alignItems: 'flex-start', background: '#0d1a2e', border: '1px solid #29b6f633', borderRadius: 8, padding: '10px 14px' },
   sectionTitle:     { fontSize:'0.72rem', color:'#555', fontFamily:'monospace', textTransform:'uppercase', letterSpacing:1 },
   summaryGrid:      { display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(130px, 1fr))', gap:8 },
-  miniChart:        { background:'#0f0f1a', borderRadius:8, padding:'10px', border:'1px solid #1a1a2e', overflowX:'auto' },
   table:            { width:'100%', borderCollapse:'collapse', fontFamily:'monospace', fontSize:'0.78rem', minWidth: 700 },
   thead:            { background:'#0f0f1a' },
   th:               { padding:'8px 10px', color:'#444', fontWeight:'normal', textAlign:'left', borderBottom:'1px solid #1a1a2e', whiteSpace:'nowrap' },
