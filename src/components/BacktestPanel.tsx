@@ -314,8 +314,16 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, ma3Period
                           {t.type === 'LONG' ? '🟢 L' : '🔴 S'}
                         </td>
                         <td style={styles.td}>{fmtTime(t.entryTime)}</td>
-                        <td style={styles.td}>{t.entryPrice.toFixed(0)} pts</td>
-                        <td style={styles.td}>{t.exitPrice.toFixed(0)} pts</td>
+                        <td style={styles.td}>
+                          {isFutures
+                            ? `${t.entryPrice.toFixed(0)} pts`
+                            : `HK$${t.entryPrice.toFixed(3)}`}
+                        </td>
+                        <td style={styles.td}>
+                          {isFutures
+                            ? `${t.exitPrice.toFixed(0)} pts`
+                            : `HK$${t.exitPrice.toFixed(3)}`}
+                        </td>
                         <td style={{ ...styles.td, color: t.pnl >= 0 ? '#00c853' : '#ff1744', fontWeight: 'bold' }}>
                           {t.pnl >= 0 ? '+' : ''}{fmtHKD(t.pnl)}
                         </td>
@@ -324,10 +332,12 @@ export default function BacktestPanel({ candles, ma1Period, ma2Period, ma3Period
                         </td>
                         <td style={{ ...styles.td,
                           color: t.exitReason === 'TP' ? '#00c853'
-                               : t.exitReason === 'SL' ? '#ff1744' : '#888' }}
+                               : t.exitReason === 'SL' ? '#ff1744'
+                               : t.exitReason === 'TRAIL' ? '#29b6f6' : '#888' }}
                         >
-                          {t.exitReason === 'TP' ? tr('btTP', lang)
-                           : t.exitReason === 'SL' ? tr('btSL', lang)
+                          {t.exitReason === 'TP'    ? tr('btTP', lang)
+                           : t.exitReason === 'SL'  ? tr('btSL', lang)
+                           : t.exitReason === 'TRAIL' ? (isEN ? '📈 Trail' : '📈 跟隨')
                            : tr('btIncomplete', lang)}
                         </td>
                       </tr>
