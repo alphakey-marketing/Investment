@@ -36,4 +36,4 @@ export default function ModeBar({ mode, onChange }: Props) {
   );
 }
 
-const styles: Record<string, React.CSSProperties>
+const styles: Record<string, React.CSSProperties> = {};
